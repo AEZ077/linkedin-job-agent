@@ -25,53 +25,72 @@ from job_matcher import JobMatcher
 from notifier import WhatsAppNotifier
 
 
-def matches_target_titles(job_title: str, target_keywords: list) -> bool:
-    """
-    فحص فوري للمسمى الوظيفي:
-    إذا كان المسمى يطابق أو يحتوي على أي من المسميات المطلوبة من المستخدم،
-    يتم قبوله وتمريره فوراً بدون أي تدقيق معقد من الذكاء الاصطناعي.
-    """
-    clean_title = job_title.lower().replace("manger", "manager").replace("-", " ")
-    for kw in target_keywords:
-        clean_kw = kw.lower().replace("manger", "manager").replace("-", " ")
-        if clean_kw in clean_title or clean_title in clean_kw:
-            return True
+# القائمة الحصرية الصارمة للمسميات المطلوبة من الأستاذ أحمد فقط
+STRICT_TARGET_TITLES = [
+    "sales account manager",
+    "senior sales account manager",
+    "senior account manager",
+    "senior account management",
+    "sales team lead",
+    "sales team leader",
+    "account manager team leader",
+    "account manager team lead",
+    "account management team leader",
+    "account management team lead",
+    "sales supervisor",
+    "business development team lead",
+    "bd team lead",
+    "head of customer experience",
+    "sales retention team lead",
+    "retention team lead",
+    "senior customer success specialist"
+]
 
-    core_terms = [
-        "sales account manager", "senior sales account manager", "senior account manager",
-        "sales team lead", "sales team leader",
-        "account manager team leader", "account manager team lead",
-        "account management team lead", "senior account management",
-        "sales supervisor", "business development team lead", "bd team lead",
-        "customer experience", "sales retention", "retention team lead",
-        "customer success specialist", "customer success team lead", "customer success manager"
-    ]
-    for term in core_terms:
-        if term in clean_title:
+# مجالات ممنوعة ومستبعدة تماماً (ليست تك أو برمجيات أو استشارات)
+EXCLUDED_SECTORS = [
+    "hospital", "healthcare", "clinic", "medical", "automotive", "car ", "cars",
+    "showroom", "pharmacy", "jewelry", "watches", "hotel", "hospitality",
+    "restaurant", "retail store", "fashion", "apparel"
+]
+
+TECH_REQUIRED_KEYWORDS = [
+    "software", "tech", "technology", "saas", "erp", "it services", "it consulting",
+    "business consulting", "cloud", "digital solutions", "crm", "platform", "information technology"
+]
+
+
+def matches_target_titles(job_title: str, target_keywords: list = None) -> bool:
+    """
+    فحص صارم جداً وحصري:
+    يجب أن يحتوي المسمى الوظيفي على واحد من مسميات الأستاذ أحمد الـ 14 حصراً.
+    أي مسمى آخر مثل (Area Sales Manager, Vendor Lead, Retail Lead...) يُرفض فوراً.
+    """
+    clean_title = re.sub(r"[^\w\s]", " ", job_title.lower())
+    clean_title = clean_title.replace("manger", "manager")
+    clean_title = " ".join(clean_title.split())
+
+    for target in STRICT_TARGET_TITLES:
+        # فحص وجود العبارة كاملة كجزء من المسمى
+        if target in clean_title:
             return True
 
     return False
 
 
-TECH_KEYWORDS = [
-    "software", "tech", "technology", "saas", "consulting", "consultancy",
-    "services", "digital", "it ", " it", "it-", "information technology",
-    "cloud", "erp", "solution", "solutions", "web", "app", "application",
-    "platform", "data", "telecom", "b2b", "crm", "ai", "fintech", "edtech",
-    "e-commerce", "business consulting"
-]
-
-
 def is_tech_or_consulting(title: str, company: str, description: str) -> bool:
     """
-    التحقق من أن مجال الشركة أو الوظيفة يقع ضمن:
-    Business Consulting and Services أو Software Development أو التك عموماً
+    فلترة قطاع الشركة:
+    قبول شركات البرمجيات والتك والاستشارات حصراً، ورفض المستشفيات والسيارات والمعارض.
     """
     full_text = f"{title} {company} {description}".lower()
-    # إذا لم يتوفر وصف، نعتمد على المسمى والشركة، أو نمررها احتياطياً
-    if not description:
-        return any(k in f"{title} {company}".lower() for k in TECH_KEYWORDS) or True
-    return any(k in full_text for k in TECH_KEYWORDS)
+
+    # إذا وجد مجال مستبعد بدون ذكر برمجيات أو ساس -> رفض فوري
+    for bad in EXCLUDED_SECTORS:
+        if bad in full_text and not any(k in full_text for k in ["software", "saas", "tech", "platform"]):
+            return False
+
+    # يجب أن يحتوي النص على إشارة واضحة لقطاع التك أو الاستشارات أو الـ SaaS
+    return any(k in full_text for k in TECH_REQUIRED_KEYWORDS)
 
 
 def is_within_working_hours(start_hour: int = 10, end_hour: int = 24) -> bool:
@@ -228,7 +247,22 @@ class JobAgent:
                     posted_time = job.get("posted_time", "")
                     max_hours = self.config.get("scheduler", {}).get("max_posted_hours", 8)
 
-                    # فحص وقت النشر: نرفض أي وظيفة مر عليها أكثر من 8 ساعات أو أيام
+                    # 1. الفحص الصارم للمسمى الوظيفي: يجب أن يطابق حصراً قائمة الأستاذ أحمد
+                    if not matches_target_titles(job["title"]):
+                        self.storage.save_job(
+                            job_id=job_id,
+                            title=job["title"],
+                            company=job["company"],
+                            location=job["location"],
+                            job_url=job["job_url"],
+                            match_score=0,
+                            is_match=False,
+                            match_summary="المسمى ليس في قائمة المسميات المطلوبة حصراً",
+                            notified=False
+                        )
+                        continue
+
+                    # 2. فحص وقت النشر: نرفض أي وظيفة مر عليها أكثر من 8 ساعات أو أيام
                     if posted_time and not is_posted_within_max_hours(posted_time, max_hours):
                         print(f"   ⏳ تم تخطي الوظيفة ({job['title']}) لأنها نُشرت قديمة ({posted_time} - أكثر من {max_hours} ساعات)")
                         self.storage.save_job(
@@ -244,32 +278,13 @@ class JobAgent:
                         )
                         continue
 
-                    print(f"\n✨ وظيفة جديدة حديثة ({posted_time or 'اليوم'}): {job['title']} @ {job['company']}")
-                    
+                    print(f"\n✨ وظيفة متطابقة حديثة ({posted_time or 'اليوم'}): {job['title']} @ {job['company']}")
+
                     # جلب الوصف الوظيفي الكامل
                     desc = self.scraper.fetch_job_description(job_id)
                     time.sleep(1)  # تأخير مهذب لتجنب الحظر
 
-                    # التقييم بواسطة الذكاء الاصطناعي
-                    print("   🤖 جاري تحليل التوافق بواسطة Gemini...")
-                    evaluation = self.matcher.evaluate_job(
-                        candidate_profile=profile,
-                        job_title=job["title"],
-                        company=job["company"],
-                        location=job["location"],
-                        job_description=desc
-                    )
-
-                    score = evaluation.get("match_score", 0)
-                    is_rec = evaluation.get("is_recommended", False)
-                    summary = evaluation.get("arabic_summary", "")
-                    matching_skills = ", ".join(evaluation.get("matching_skills", []))
-                    missing_skills = ", ".join(evaluation.get("missing_skills", []))
-
-                    # فحص مباشر للمسمى: إذا كان المسمى يطابق طلب المستخدم
-                    direct_match = matches_target_titles(job["title"], keywords)
-
-                    # فحص قطاع الشركة: Software Development أو Business Consulting أو التك عموماً
+                    # 3. فحص قطاع الشركة: Software Development أو Business Consulting أو التك عموماً
                     if not is_tech_or_consulting(job["title"], job["company"], desc):
                         print(f"   ⏩ تم تخطي الوظيفة لأن الشركة ليست في قطاع التك أو الاستشارات ({job['company']})")
                         self.storage.save_job(
@@ -285,24 +300,33 @@ class JobAgent:
                         )
                         continue
 
-                    if direct_match:
-                        is_rec = True
-                        score = max(score, 90)
-                        if not summary or score < min_score:
-                            summary = f"الوظيفة متطابقة مباشرة مع المسمى الذي حددته: {job['title']} في {job['company']} (قطاع التك/الاستشارات)."
-                        print(f"   🎯 المسمى الوظيفي متطابق مباشرة مع طلبك -> قبول فوري ({job['title']})")
+                    # 4. التقييم بواسطة الذكاء الاصطناعي لكتابة ملخص احترافي
+                    print("   🤖 جاري كتابة ملخص التوافق بواسطة Gemini...")
+                    evaluation = self.matcher.evaluate_job(
+                        candidate_profile=profile,
+                        job_title=job["title"],
+                        company=job["company"],
+                        location=job["location"],
+                        job_description=desc
+                    )
 
-                    print(f"   📊 نتيجة التقييم: {score}% {'(متطابقة ✅)' if is_rec else '(غير متطابقة ❌)'}")
+                    score = max(int(evaluation.get("match_score", 90)), 90)
+                    summary = evaluation.get("arabic_summary") or f"الوظيفة متطابقة تماماً مع طلبك: {job['title']} في {job['company']}."
+                    evaluation["match_score"] = score
+                    evaluation["arabic_summary"] = summary
+                    matching_skills = ", ".join(evaluation.get("matching_skills", []))
+                    missing_skills = ", ".join(evaluation.get("missing_skills", []))
 
-                    notified = False
-                    if is_rec or score >= min_score or direct_match:
-                        total_matched += 1
-                        print("   📲 إرسال إشعار الوظيفة فوراً...")
-                        msg = self.notifier.format_job_message(job, evaluation)
-                        sent = self.notifier.send_notification(msg)
-                        if sent:
-                            total_notified += 1
-                            notified = True
+                    print(f"   📊 نتيجة التقييم: {score}% (متطابقة ومقبولة حصراً ✅)")
+
+                    # 5. الإرسال الفوري لتيليجرام
+                    total_matched += 1
+                    print("   📲 إرسال إشعار الوظيفة فوراً إلى تيليجرام...")
+                    msg = self.notifier.format_job_message(job, evaluation)
+                    sent = self.notifier.send_notification(msg)
+                    notified = True if sent else False
+                    if sent:
+                        total_notified += 1
 
                     # حفظ النتيجة في قاعدة البيانات
                     self.storage.save_job(
@@ -312,7 +336,7 @@ class JobAgent:
                         location=job["location"],
                         job_url=job["job_url"],
                         match_score=score,
-                        is_match=(is_rec or score >= min_score),
+                        is_match=True,
                         match_summary=summary,
                         matching_skills=matching_skills,
                         missing_skills=missing_skills,
