@@ -1,0 +1,69 @@
+# ============================================================
+# إعدادات البحث المخصصة للأستاذ: أحمد عيد زكي
+# ============================================================
+
+# مسار ملف السيرة الذاتية
+cv:
+  path: "cv.txt"
+
+# تفاصيل الوظائف المستهدفة
+search:
+  # المسميات الوظيفية المطلوبة بدقة من المستخدم
+  keywords:
+    - "Sales Account Manager"
+    - "Senior Sales Account Manager"
+    - "Senior Account Manager"
+    - "Sales Team Lead"
+    - "Sales Team Leader"
+    - "Account Manager Team Leader"
+    - "Account Manager Team Lead"
+    - "Sales Supervisor"
+    - "Business Development Team Lead"
+    - "Account Management Team Lead"
+    - "Senior Account Management"
+    - "Head of Customer Experience"
+    - "Sales Retention Team Lead"
+    - "Senior Customer Success Specialist"
+
+  # المناطق الجغرافية المستهدفة
+  locations:
+    - "Riyadh, Saudi Arabia"
+    - "Cairo, Egypt"
+    - "Egypt"
+    - "Saudi Arabia"
+
+  # نطاق وقت نشر الوظيفة في لينكدإن:
+  # r86400 = آخر 24 ساعة فقط (يمنع تماماً الوظائف القديمة المنشورة منذ أيام)
+  time_range: "r86400"
+
+  # أقصى عدد وظائف يتم جلبها لكل مسمى في كل جولة
+  max_jobs_per_keyword: 8
+
+# إعدادات الذكاء الاصطناعي والمطابقة
+matching:
+  # أقل نسبة تطابق مقبولة لإرسال الإشعار لواتساب
+  min_match_score: 70
+  gemini_model: "gemini-3.5-flash-lite"
+  summary_language: "arabic"
+
+# إعدادات الجدولة الزمنية وساعات العمل
+scheduler:
+  # التشغيل كل نصف ساعة (30 دقيقة)
+  interval_minutes: 30
+  # ساعات العمل المحددة: من 10 صباحاً إلى 12 منتصف الليل (24:00)
+  start_hour: 10
+  end_hour: 24
+  # الحد الأقصى لعمر نشر الوظيفة بالساعات (من ساعتين وحتى 8 ساعات كحد أقصى)
+  # أي وظيفة مر عليها أكثر من 8 ساعات أو أيام يتم استبعادها فوراً
+  max_posted_hours: 8
+
+# القطاعات المستهدفة: التك والبرمجيات والاستشارات
+industries:
+  - "Software Development"
+  - "Business Consulting and Services"
+  - "Tech & IT Solutions"
+  - "SaaS & Cloud"
+
+# قناة الإشعار: telegram (الأفضل والمجاني 100%) أو email أو callmebot
+notifier:
+  provider: "telegram"

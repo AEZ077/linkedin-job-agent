@@ -1,0 +1,29 @@
+Full Name: Zaki Developer
+Current Title: Senior Full Stack Engineer
+Experience: 5+ Years
+Location: Riyadh, Saudi Arabia
+
+Professional Summary:
+Passionate Full Stack Software Engineer with over 5 years of hands-on experience building scalable web applications and SaaS platforms. Highly proficient in TypeScript, React, Next.js, Node.js, Express, Python (FastAPI/Django), PostgreSQL, Redis, and cloud architectures (AWS & Docker). Strong background in designing RESTful and GraphQL APIs, optimizing system performance, and leading agile development teams.
+
+Core Technical Skills:
+- Frontend: JavaScript (ES6+), TypeScript, React, Next.js, Vue.js, Tailwind CSS, Redux Toolkit, HTML5/CSS3.
+- Backend: Node.js, Express, Python, FastAPI, Django, NestJS.
+- Databases: PostgreSQL, MySQL, SQLite, MongoDB, Redis, Prisma ORM.
+- DevOps & Tools: Docker, Git, GitHub Actions, AWS (S3, EC2, Lambda), Linux, Nginx.
+- Methodologies: Agile/Scrum, CI/CD, Microservices, Clean Architecture, Unit & Integration Testing.
+
+Work Experience:
+- Senior Full Stack Developer | Tech Innovations (2022 - Present)
+  - Architected high-traffic web applications serving 200k+ active users.
+  - Reduced API latency by 40% through Redis caching and PostgreSQL query optimization.
+  - Mentored junior engineers and conducted technical code reviews.
+- Software Engineer | Digital Solutions Hub (2019 - 2022)
+  - Developed responsive frontend interfaces in React and backend services in Node.js.
+  - Integrated third-party payment gateways, CRM integrations, and webhooks.
+
+Target Roles:
+- Senior Full Stack Developer
+- Full Stack Engineer
+- Software Engineer / Tech Lead
+- Backend / Frontend Engineer
