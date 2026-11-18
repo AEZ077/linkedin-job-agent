@@ -66,33 +66,46 @@ class JobMatcher:
 أجب بصيغة JSON فقط:
 """
 
-        try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.2
+        for attempt in range(2):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.2
+                    )
                 )
-            )
 
-            result = json.loads(response.text)
-            # التأكد من صحة الحقول
-            score = int(result.get("match_score", 0))
-            is_rec = result.get("is_recommended", score >= self.min_score)
-            arabic_summary = result.get("arabic_summary", "")
-            matching_skills = result.get("matching_skills", [])
-            missing_skills = result.get("missing_skills", [])
+                result = json.loads(response.text)
+                # التأكد من صحة الحقول
+                score = int(result.get("match_score", 0))
+                is_rec = result.get("is_recommended", score >= self.min_score)
+                arabic_summary = result.get("arabic_summary", "")
+                matching_skills = result.get("matching_skills", [])
+                missing_skills = result.get("missing_skills", [])
 
-            return {
-                "match_score": score,
-                "is_recommended": is_rec,
-                "arabic_summary": arabic_summary,
-                "matching_skills": matching_skills,
-                "missing_skills": missing_skills
-            }
+                return {
+                    "match_score": score,
+                    "is_recommended": is_rec,
+                    "arabic_summary": arabic_summary,
+                    "matching_skills": matching_skills,
+                    "missing_skills": missing_skills
+                }
 
-        except Exception as e:
+            except Exception as e:
+                if attempt == 0:
+                    import time
+                    time.sleep(2)
+                    continue
+                print(f"❌ خطأ أثناء تقييم الوظيفة عبر Gemini ({job_title}): {e}")
+                return {
+                    "match_score": 0,
+                    "is_recommended": False,
+                    "arabic_summary": f"حدث خطأ أثناء التقييم: {e}",
+                    "matching_skills": [],
+                    "missing_skills": []
+                }
             print(f"❌ خطأ أثناء تقييم الوظيفة عبر Gemini ({job_title}): {e}")
             return {
                 "match_score": 0,
