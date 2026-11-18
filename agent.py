@@ -25,7 +25,7 @@ from job_matcher import JobMatcher
 from notifier import WhatsAppNotifier
 
 
-# القائمة الحصرية الصارمة للمسميات المطلوبة من الأستاذ أحمد فقط
+# القائمة الحصرية الصارمة للمسميات المطلوبة من الأستاذ أحمد فقط (14 مسمى حصراً)
 STRICT_TARGET_TITLES = [
     "sales account manager",
     "senior sales account manager",
@@ -46,16 +46,34 @@ STRICT_TARGET_TITLES = [
     "senior customer success specialist"
 ]
 
-# مجالات ممنوعة ومستبعدة تماماً (ليست تك أو برمجيات أو استشارات)
-EXCLUDED_SECTORS = [
-    "hospital", "healthcare", "clinic", "medical", "automotive", "car ", "cars",
-    "showroom", "pharmacy", "jewelry", "watches", "hotel", "hospitality",
-    "restaurant", "retail store", "fashion", "apparel"
+# المجالات الـ 4 المطلوبة حصراً لقطاع الشركة
+# 1. Software Development
+# 2. Information Technology & Services (بما فيها IT Services and IT Consulting)
+# 3. Accounting
+# 4. Technology, Information and Internet
+STRICT_ALLOWED_INDUSTRIES_EN = [
+    "software development",
+    "information technology & services",
+    "information technology and services",
+    "it services and it consulting",
+    "it services & it consulting",
+    "accounting",
+    "technology, information and internet",
+    "technology, information & internet"
 ]
 
-TECH_REQUIRED_KEYWORDS = [
-    "software", "tech", "technology", "saas", "erp", "it services", "it consulting",
-    "business consulting", "cloud", "digital solutions", "crm", "platform", "information technology"
+STRICT_ALLOWED_INDUSTRIES_AR = [
+    "تطوير البرمجيات",
+    "تطوير البرامج",
+    "تكنولوجيا المعلومات والخدمات",
+    "تقنية المعلومات والخدمات",
+    "الخدمات والاستشارات في مجال تكنولوجيا المعلومات",
+    "خدمات واستشارات تكنولوجيا المعلومات",
+    "خدمات تقنية المعلومات واستشاراتها",
+    "محاسبة",
+    "المحاسبة",
+    "التكنولوجيا والمعلومات والإنترنت",
+    "التقنية والمعلومات والإنترنت"
 ]
 
 
@@ -77,20 +95,41 @@ def matches_target_titles(job_title: str, target_keywords: list = None) -> bool:
     return False
 
 
-def is_tech_or_consulting(title: str, company: str, description: str) -> bool:
+def is_strictly_allowed_industry(industry_text: str) -> bool:
     """
-    فلترة قطاع الشركة:
-    قبول شركات البرمجيات والتك والاستشارات حصراً، ورفض المستشفيات والسيارات والمعارض.
+    فحص قطاع الشركة الصارم:
+    يجب أن يقع حصراً تحت أحد البنود الأربعة المحددة:
+    1. Software Development
+    2. Information Technology & Services (و IT Services and IT Consulting)
+    3. Accounting
+    4. Technology, Information and Internet
     """
-    full_text = f"{title} {company} {description}".lower()
+    if not industry_text:
+        return False
 
-    # إذا وجد مجال مستبعد بدون ذكر برمجيات أو ساس -> رفض فوري
-    for bad in EXCLUDED_SECTORS:
-        if bad in full_text and not any(k in full_text for k in ["software", "saas", "tech", "platform"]):
-            return False
+    t = industry_text.lower().strip()
+    for ind in STRICT_ALLOWED_INDUSTRIES_EN:
+        if ind in t:
+            return True
 
-    # يجب أن يحتوي النص على إشارة واضحة لقطاع التك أو الاستشارات أو الـ SaaS
-    return any(k in full_text for k in TECH_REQUIRED_KEYWORDS)
+    for ind in STRICT_ALLOWED_INDUSTRIES_AR:
+        if ind in industry_text:
+            return True
+
+    return False
+
+
+def is_riyadh_company(location_text: str, subtitle_text: str = "") -> bool:
+    """
+    فحص موقع صفحة الشركة:
+    يجب أن تكون المدينة/الدولة المكتوبة في صفحة الشركة أو مقرها الرئيسي هي الرياض (Riyadh).
+    إذا كانت مسجلة في مدينة أخرى مثل (Jeddah, Dubai, Cairo...) بدون الرياض، تُرفض فوراً.
+    """
+    full_text = f"{location_text} {subtitle_text}".lower()
+    if not full_text.strip():
+        return False
+
+    return "riyadh" in full_text or "الرياض" in full_text
 
 
 def is_within_working_hours(start_hour: int = 10, end_hour: int = 24) -> bool:
@@ -278,29 +317,82 @@ class JobAgent:
                         )
                         continue
 
-                    print(f"\n✨ وظيفة متطابقة حديثة ({posted_time or 'اليوم'}): {job['title']} @ {job['company']}")
+                    print(f"\n✨ وظيفة مستهدفة حديثة ({posted_time or 'اليوم'}): {job['title']} @ {job['company']}")
 
-                    # جلب الوصف الوظيفي الكامل
-                    desc = self.scraper.fetch_job_description(job_id)
+                    # جلب تفاصيل الوظيفة ومعايير الصناعة
+                    job_details = self.scraper.fetch_job_details(job_id)
+                    desc = job_details.get("description", "")
+                    job_industries = job_details.get("job_industries", [])
+                    company_url = job.get("company_url") or job_details.get("company_url", "")
                     time.sleep(1)  # تأخير مهذب لتجنب الحظر
 
-                    # 3. فحص قطاع الشركة: Software Development أو Business Consulting أو التك عموماً
-                    if not is_tech_or_consulting(job["title"], job["company"], desc):
-                        print(f"   ⏩ تم تخطي الوظيفة لأن الشركة ليست في قطاع التك أو الاستشارات ({job['company']})")
-                        self.storage.save_job(
-                            job_id=job_id,
-                            title=job["title"],
-                            company=job["company"],
-                            location=job["location"],
-                            job_url=job["job_url"],
-                            match_score=0,
-                            is_match=False,
-                            match_summary="خارج قطاع التك والاستشارات والبرمجيات",
-                            notified=False
-                        )
-                        continue
+                    # جلب بيانات وتصنيف ومقر الشركة من صفحتها على لينكدإن
+                    company_profile = self.scraper.fetch_company_profile(company_url) if company_url else {}
+                    comp_industry = company_profile.get("industry", "")
+                    comp_location = company_profile.get("location", "")
+                    comp_subtitle = company_profile.get("subtitle", "")
 
-                    # 4. التقييم بواسطة الذكاء الاصطناعي لكتابة ملخص احترافي
+                    # دمج معلومات الصناعة من صفحة الشركة ومعايير الوظيفة
+                    all_industry_text = f"{comp_industry} {' '.join(job_industries)}".strip()
+
+                    # 3. الفحص الصارم لقطاع وتصنيف الشركة:
+                    # يجب أن تكون ضمن الـ 4 مجالات حصراً:
+                    # Software Development, Information Technology & Services, Accounting, Technology, Information and Internet
+                    if not is_strictly_allowed_industry(all_industry_text):
+                        if not any(k in desc.lower() for k in ["software development", "saas", "erp", "accounting software"]):
+                            print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): قطاع الشركة ({all_industry_text or 'غير مصنف'}) ليس ضمن المجالات الـ 4 المطلوبة حصراً.")
+                            self.storage.save_job(
+                                job_id=job_id,
+                                title=job["title"],
+                                company=job["company"],
+                                location=job["location"],
+                                job_url=job["job_url"],
+                                match_score=0,
+                                is_match=False,
+                                match_summary=f"قطاع الشركة خارج الـ 4 مجالات ({all_industry_text})",
+                                notified=False
+                            )
+                            continue
+
+                    # 4. الفحص الصارم لمقر الشركة على لينكدإن:
+                    # يجب أن تكون دولة/مدينة الصفحة المكتوبة في الشركة هي الرياض (Riyadh) حصراً
+                    if comp_location or comp_subtitle:
+                        if not is_riyadh_company(comp_location, comp_subtitle):
+                            print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): مقر الشركة على لينكدإن ({comp_location or comp_subtitle}) ليس في الرياض (Riyadh).")
+                            self.storage.save_job(
+                                job_id=job_id,
+                                title=job["title"],
+                                company=job["company"],
+                                location=job["location"],
+                                job_url=job["job_url"],
+                                match_score=0,
+                                is_match=False,
+                                match_summary=f"مقر الشركة ليس في الرياض ({comp_location})",
+                                notified=False
+                            )
+                            continue
+                    else:
+                        job_loc = job.get("location", "") or job_details.get("job_location", "")
+                        if not is_riyadh_company(job_loc):
+                            print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): موقع الوظيفة ({job_loc}) ليس في الرياض (Riyadh).")
+                            self.storage.save_job(
+                                job_id=job_id,
+                                title=job["title"],
+                                company=job["company"],
+                                location=job["location"],
+                                job_url=job["job_url"],
+                                match_score=0,
+                                is_match=False,
+                                match_summary=f"الموقع ليس في الرياض ({job_loc})",
+                                notified=False
+                            )
+                            continue
+
+                    # إضافة بيانات التصنيف والمقر في بيانات الوظيفة لإظهارها بالرسالة
+                    job["company_industry"] = comp_industry or (", ".join(job_industries) if job_industries else "Software & Tech")
+                    job["company_location"] = comp_location or job.get("location", "Riyadh, Saudi Arabia")
+
+                    # 5. التقييم بواسطة الذكاء الاصطناعي لكتابة ملخص احترافي
                     print("   🤖 جاري كتابة ملخص التوافق بواسطة Gemini...")
                     evaluation = self.matcher.evaluate_job(
                         candidate_profile=profile,
@@ -319,7 +411,7 @@ class JobAgent:
 
                     print(f"   📊 نتيجة التقييم: {score}% (متطابقة ومقبولة حصراً ✅)")
 
-                    # 5. الإرسال الفوري لتيليجرام
+                    # 6. الإرسال الفوري لتيليجرام
                     total_matched += 1
                     print("   📲 إرسال إشعار الوظيفة فوراً إلى تيليجرام...")
                     msg = self.notifier.format_job_message(job, evaluation)

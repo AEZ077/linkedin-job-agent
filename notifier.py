@@ -37,6 +37,8 @@ class JobNotifier:
         title = job.get("title", "وظيفة غير محددة")
         company = job.get("company", "شركة غير معلنة")
         location = job.get("location", "الموقع غير محدد")
+        company_industry = job.get("company_industry") or evaluation.get("company_industry", "")
+        company_location = job.get("company_location", "")
         posted_time = job.get("posted_time", "")
         url = job.get("job_url", "")
         score = evaluation.get("match_score", 0)
@@ -44,6 +46,9 @@ class JobNotifier:
         matching_skills = evaluation.get("matching_skills", [])
 
         time_line = f"🕒 <b>تاريخ النشر:</b> {posted_time}\n" if posted_time else ""
+        industry_line = f"🏷️ <b>تصنيف الشركة:</b> {company_industry}\n" if company_industry else ""
+        comp_loc_line = f"🏢 <b>مقر الشركة على LinkedIn:</b> {company_location}\n" if company_location else ""
+
         skills_text = ""
         if matching_skills:
             skills_text = f"\n✅ <b>المهارات المتطابقة:</b> {', '.join(matching_skills[:5])}"
@@ -53,7 +58,9 @@ class JobNotifier:
             f"━━━━━━━━━━━━━━━━━━\n"
             f"📌 <b>المسمى الوظيفي:</b> {title}\n"
             f"🏢 <b>الشركة:</b> {company}\n"
-            f"📍 <b>الموقع:</b> {location}\n"
+            f"{industry_line}"
+            f"{comp_loc_line}"
+            f"📍 <b>موقع الوظيفة:</b> {location}\n"
             f"{time_line}"
             f"⭐ <b>نسبة التطابق مع الـ CV:</b> {score}%\n"
             f"{skills_text}\n\n"

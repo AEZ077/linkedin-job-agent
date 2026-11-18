@@ -25,11 +25,9 @@ search:
     - "Sales Retention Team Lead"
     - "Senior Customer Success Specialist"
 
-  # المناطق الجغرافية المستهدفة
+  # المناطق الجغرافية المستهدفة للبحث (مقر الشركة يجب أن يكون في الرياض حصراً)
   locations:
     - "Riyadh, Saudi Arabia"
-    - "Cairo, Egypt"
-    - "Egypt"
     - "Saudi Arabia"
 
   # نطاق وقت نشر الوظيفة في لينكدإن:
@@ -57,12 +55,12 @@ scheduler:
   # أي وظيفة مر عليها أكثر من 8 ساعات أو أيام يتم استبعادها فوراً
   max_posted_hours: 8
 
-# القطاعات المستهدفة: التك والبرمجيات والاستشارات
+# القطاعات الـ 4 المحددة حصراً من المستخدم ومقرها الرياض:
 industries:
   - "Software Development"
-  - "Business Consulting and Services"
-  - "Tech & IT Solutions"
-  - "SaaS & Cloud"
+  - "Information Technology & Services"
+  - "Accounting"
+  - "Technology, Information and Internet"
 
 # قناة الإشعار: telegram (الأفضل والمجاني 100%) أو email أو callmebot
 notifier:
