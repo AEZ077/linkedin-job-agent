@@ -77,19 +77,49 @@ STRICT_ALLOWED_INDUSTRIES_AR = [
 ]
 
 
+TARGET_TITLE_PATTERNS = [
+    r"\baccount\s+manager\b",
+    r"\baccount\s+executive\b",
+    r"\baccount\s+management\b",
+    r"\bkey\s+account\b",
+    r"\bclient\s+success\b",
+    r"\bcustomer\s+success\b",
+    r"\bcustomer\s+experience\b",
+    r"\bsales\s+team\s+lead\b",
+    r"\bsales\s+team\s+leader\b",
+    r"\bsales\s+supervisor\b",
+    r"\bretention\s+team\s+lead\b",
+    r"\bsales\s+retention\b",
+    r"\bbusiness\s+development\s+team\s+lead\b",
+    r"\bbd\s+team\s+lead\b"
+]
+
+EXCLUDED_TITLE_KEYWORDS = [
+    "cash van", "cashier", "store manager", "retail sales", "retail manager",
+    "medical representative", "pharma", "clinic", "hospital", "doctor", "nurse",
+    "call center agent", "tele sales", "telesales", "outdoor sales",
+    "real estate agent", "automotive", "car sales", "mechanic", "waiter", "chef",
+    "assistant store", "district manager", "branch manager", "leasing team leader",
+    "marketing campaigns", "operations"
+]
+
+
 def matches_target_titles(job_title: str, target_keywords: list = None) -> bool:
     """
-    فحص صارم جداً وحصري:
-    يجب أن يحتوي المسمى الوظيفي على واحد من مسميات الأستاذ أحمد الـ 14 حصراً.
-    أي مسمى آخر مثل (Area Sales Manager, Vendor Lead, Retail Lead...) يُرفض فوراً.
+    فحص ذكي ودقيق للمسمى الوظيفي:
+    يطابق جميع أدوار إدارة الحسابات، قيادة المبيعات، نجاح العملاء، وتجربة العملاء.
+    ويستبعد تماماً وظائف الفروع، المعارض، السيارات، والمستشفيات.
     """
     clean_title = re.sub(r"[^\w\s]", " ", job_title.lower())
     clean_title = clean_title.replace("manger", "manager")
     clean_title = " ".join(clean_title.split())
 
-    for target in STRICT_TARGET_TITLES:
-        # فحص وجود العبارة كاملة كجزء من المسمى
-        if target in clean_title:
+    for bad in EXCLUDED_TITLE_KEYWORDS:
+        if bad in clean_title:
+            return False
+
+    for pat in TARGET_TITLE_PATTERNS:
+        if re.search(pat, clean_title):
             return True
 
     return False
@@ -278,7 +308,11 @@ class JobAgent:
                     total_scraped += 1
                     job_id = job["job_id"]
 
-                    # التحقق إذا كانت الوظيفة مفحوصة مسبقاً
+                    # التحقق الصارم من عدم تكرار الوظائف المرسلة للمستخدم
+                    if self.storage.is_already_notified(job_id, company=job.get("company", ""), title=job.get("title", "")):
+                        continue
+
+                    # التحقق إذا كانت الوظيفة مفحوصة ومستبعدة مسبقاً
                     if self.storage.is_seen(job_id):
                         continue
 

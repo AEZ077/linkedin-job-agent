@@ -8,22 +8,14 @@ cv:
 
 # تفاصيل الوظائف المستهدفة
 search:
-  # المسميات الوظيفية المطلوبة بدقة من المستخدم
+  # كلمات البحث الأساسية (تغطي كافة المسميات والـ 14 دور المطلوبين بذكاء لمنع حظر الطلبات 429)
   keywords:
-    - "Sales Account Manager"
-    - "Senior Sales Account Manager"
-    - "Senior Account Manager"
+    - "Account Manager"
+    - "Customer Success"
     - "Sales Team Lead"
-    - "Sales Team Leader"
-    - "Account Manager Team Leader"
-    - "Account Manager Team Lead"
     - "Sales Supervisor"
     - "Business Development Team Lead"
-    - "Account Management Team Lead"
-    - "Senior Account Management"
-    - "Head of Customer Experience"
-    - "Sales Retention Team Lead"
-    - "Senior Customer Success Specialist"
+    - "Customer Experience"
 
   # المناطق الجغرافية المستهدفة للبحث (مقر الشركة يجب أن يكون في الرياض حصراً)
   locations:
@@ -35,7 +27,7 @@ search:
   time_range: "r86400"
 
   # أقصى عدد وظائف يتم جلبها لكل مسمى في كل جولة
-  max_jobs_per_keyword: 8
+  max_jobs_per_keyword: 15
 
 # إعدادات الذكاء الاصطناعي والمطابقة
 matching:
@@ -46,14 +38,13 @@ matching:
 
 # إعدادات الجدولة الزمنية وساعات العمل
 scheduler:
-  # التشغيل كل نصف ساعة (30 دقيقة)
-  interval_minutes: 30
+  # التشغيل كل 15 دقيقة
+  interval_minutes: 15
   # ساعات العمل المحددة: من 10 صباحاً إلى 12 منتصف الليل (24:00)
   start_hour: 10
   end_hour: 24
-  # الحد الأقصى لعمر نشر الوظيفة بالساعات (من ساعتين وحتى 8 ساعات كحد أقصى)
-  # أي وظيفة مر عليها أكثر من 8 ساعات أو أيام يتم استبعادها فوراً
-  max_posted_hours: 8
+  # الحد الأقصى لعمر نشر الوظيفة بالساعات (حتى 24 ساعة لضمان تغطية وظائف المساء والصباح)
+  max_posted_hours: 24
 
 # القطاعات الـ 4 المحددة حصراً من المستخدم ومقرها الرياض:
 industries:

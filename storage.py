@@ -48,6 +48,31 @@ class JobStorage:
             cur = conn.execute("SELECT 1 FROM seen_jobs WHERE job_id = ?", (job_id,))
             return cur.fetchone() is not None
 
+    def is_already_notified(self, job_id: str, company: str = "", title: str = "") -> bool:
+        """
+        التحقق الصارم من عدم تكرار إرسال الوظيفة للمستخدم:
+        1. فحص إذا كان معرف الوظيفة (job_id) أُرسل إشعار عنه مسبقاً (notified = 1).
+        2. فحص تطابق اسم الشركة والمسمى الوظيفي لمنع التكرار حتى لو قامت الشركة بإعادة نشر الوظيفة بمعرف جديد.
+        """
+        with self._get_connection() as conn:
+            # 1. فحص مباشر بالـ job_id
+            cur = conn.execute("SELECT 1 FROM seen_jobs WHERE job_id = ? AND notified = 1", (job_id,))
+            if cur.fetchone() is not None:
+                return True
+
+            # 2. فحص تطابق الشركة والمسمى
+            if company and title:
+                c_clean = company.strip().lower()
+                t_clean = title.strip().lower()
+                cur = conn.execute(
+                    "SELECT 1 FROM seen_jobs WHERE LOWER(company) = ? AND LOWER(title) = ? AND notified = 1",
+                    (c_clean, t_clean)
+                )
+                if cur.fetchone() is not None:
+                    return True
+
+        return False
+
     def save_job(
         self,
         job_id: str,

@@ -63,19 +63,32 @@ class LinkedInScraper:
             params["f_WT"] = "3"
 
         jobs = []
-        # تأخير مهذب وعشوائي بين الطلبات لمنع الـ 429
-        time.sleep(random.uniform(2.0, 3.5))
+        resp = None
+
+        # محاولة البحث مع إعادة المحاولة في حال ظهور 429
+        for attempt in range(2):
+            time.sleep(random.uniform(3.0, 5.0))
+            try:
+                resp = self.session.get(SEARCH_ENDPOINT, params=params, headers=self._get_headers(), timeout=15)
+                if resp.status_code == 429:
+                    print(f"⏳ تم الوصول لحد الطلبات مؤقتاً (429) للبحث عن '{keyword}' - انتظار 15 ثانية وإعادة المحاولة...")
+                    time.sleep(15)
+                    continue
+                elif resp.status_code != 200:
+                    print(f"⚠️ استجابة لينكدإن ({resp.status_code}) للبحث عن: '{keyword}' في '{location}'")
+                    return jobs
+                break
+            except Exception as e:
+                if attempt == 0:
+                    time.sleep(5)
+                    continue
+                print(f"❌ خطأ أثناء البحث في لينكدإن ({keyword} - {location}): {e}")
+                return jobs
+
+        if not resp or resp.status_code != 200:
+            return jobs
 
         try:
-            resp = self.session.get(SEARCH_ENDPOINT, params=params, headers=self._get_headers(), timeout=15)
-            if resp.status_code == 429:
-                print(f"⏳ تم الوصول لحد الطلبات مؤقتاً (429) - سيتم الانتظار قليلاً...")
-                time.sleep(10)
-                return jobs
-            elif resp.status_code != 200:
-                print(f"⚠️ استجابة لينكدإن ({resp.status_code}) للبحث عن: '{keyword}' في '{location}'")
-                return jobs
-
             soup = BeautifulSoup(resp.text, "html.parser")
             cards = soup.select("li div.base-card")
 
@@ -151,7 +164,7 @@ class LinkedInScraper:
             "company_url": ""
         }
         try:
-            resp = self.session.get(url, timeout=15)
+            resp = self.session.get(url, headers=self._get_headers(), timeout=15)
             if resp.status_code != 200:
                 return details
 
