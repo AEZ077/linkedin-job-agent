@@ -47,104 +47,116 @@ class LinkedInScraper:
     ) -> List[Dict[str, Any]]:
         """
         البحث عن الوظائف في لينكدإن بناءً على الكلمة المفتاحية والموقع ونطاق الوقت
+        يدعم البحث عبر أكثر من صفحة (Pagination) للوصول لكافة الوظائف المنشورة
         """
-        params = {
-            "keywords": keyword,
-            "location": location,
-            "f_TPR": time_range,
-            "start": 0
-        }
-
-        if work_type.lower() == "remote":
-            params["f_WT"] = "2"
-        elif work_type.lower() == "onsite":
-            params["f_WT"] = "1"
-        elif work_type.lower() == "hybrid":
-            params["f_WT"] = "3"
-
         jobs = []
-        resp = None
+        seen_job_ids = set()
+        offsets = [0, 25] if max_jobs > 10 else [0]
 
-        # محاولة البحث مع إعادة المحاولة في حال ظهور 429
-        for attempt in range(2):
-            time.sleep(random.uniform(3.0, 5.0))
-            try:
-                resp = self.session.get(SEARCH_ENDPOINT, params=params, headers=self._get_headers(), timeout=15)
-                if resp.status_code == 429:
-                    print(f"⏳ تم الوصول لحد الطلبات مؤقتاً (429) للبحث عن '{keyword}' - انتظار 15 ثانية وإعادة المحاولة...")
-                    time.sleep(15)
-                    continue
-                elif resp.status_code != 200:
-                    print(f"⚠️ استجابة لينكدإن ({resp.status_code}) للبحث عن: '{keyword}' في '{location}'")
-                    return jobs
+        for offset in offsets:
+            if len(jobs) >= max_jobs:
                 break
-            except Exception as e:
-                if attempt == 0:
-                    time.sleep(5)
-                    continue
-                print(f"❌ خطأ أثناء البحث في لينكدإن ({keyword} - {location}): {e}")
-                return jobs
 
-        if not resp or resp.status_code != 200:
-            return jobs
+            params = {
+                "keywords": keyword,
+                "location": location,
+                "f_TPR": time_range,
+                "start": offset
+            }
 
-        try:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            cards = soup.select("li div.base-card")
+            if work_type.lower() == "remote":
+                params["f_WT"] = "2"
+            elif work_type.lower() == "onsite":
+                params["f_WT"] = "1"
+            elif work_type.lower() == "hybrid":
+                params["f_WT"] = "3"
 
-            for card in cards:
-                if len(jobs) >= max_jobs:
+            resp = None
+
+            # محاولة البحث مع إعادة المحاولة في حال ظهور 429
+            for attempt in range(2):
+                time.sleep(random.uniform(2.5, 4.0))
+                try:
+                    resp = self.session.get(SEARCH_ENDPOINT, params=params, headers=self._get_headers(), timeout=15)
+                    if resp.status_code == 429:
+                        print(f"⏳ تم الوصول لحد الطلبات مؤقتاً (429) للبحث عن '{keyword}' - انتظار 15 ثانية وإعادة المحاولة...")
+                        time.sleep(15)
+                        continue
+                    elif resp.status_code != 200:
+                        break
+                    break
+                except Exception as e:
+                    if attempt == 0:
+                        time.sleep(5)
+                        continue
+                    print(f"❌ خطأ أثناء البحث في لينكدإن ({keyword} - {location}): {e}")
                     break
 
-                job_id = None
-                urn = card.get("data-entity-urn", "")
-                if urn and "jobPosting:" in urn:
-                    job_id = urn.split("jobPosting:")[-1].strip()
+            if not resp or resp.status_code != 200:
+                continue
 
-                title_el = card.select_one("h3.base-search-card__title, .sr-only")
-                title = title_el.get_text(strip=True) if title_el else ""
+            try:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                cards = soup.select("li div.base-card")
+                if not cards:
+                    break
 
-                company_el = card.select_one("h4.base-search-card__subtitle a, h4.base-search-card__subtitle")
-                company = company_el.get_text(strip=True) if company_el else "Unknown Company"
+                for card in cards:
+                    if len(jobs) >= max_jobs:
+                        break
 
-                # رابط صفحة الشركة على لينكدإن
-                company_link_el = card.select_one("h4.base-search-card__subtitle a")
-                company_url = company_link_el.get("href", "") if company_link_el else ""
-                if company_url and "?" in company_url:
-                    company_url = company_url.split("?")[0].strip()
+                    job_id = None
+                    urn = card.get("data-entity-urn", "")
+                    if urn and "jobPosting:" in urn:
+                        job_id = urn.split("jobPosting:")[-1].strip()
 
-                loc_el = card.select_one(".job-search-card__location")
-                loc = loc_el.get_text(strip=True) if loc_el else location
+                    title_el = card.select_one("h3.base-search-card__title, .sr-only")
+                    title = title_el.get_text(strip=True) if title_el else ""
 
-                time_el = card.select_one("time")
-                posted_time = time_el.get_text(strip=True) if time_el else ""
+                    company_el = card.select_one("h4.base-search-card__subtitle a, h4.base-search-card__subtitle")
+                    company = company_el.get_text(strip=True) if company_el else "Unknown Company"
 
-                link_el = card.select_one("a.base-card__full-link, a")
-                raw_url = link_el.get("href", "") if link_el else ""
+                    # رابط صفحة الشركة على لينكدإن
+                    company_link_el = card.select_one("h4.base-search-card__subtitle a")
+                    company_url = company_link_el.get("href", "") if company_link_el else ""
+                    if company_url and "?" in company_url:
+                        company_url = company_url.split("?")[0].strip()
 
-                if not job_id and raw_url:
-                    match = re.search(r"-(\d+)\?", raw_url) or re.search(r"/view/(\d+)", raw_url)
-                    if match:
-                        job_id = match.group(1)
+                    loc_el = card.select_one(".job-search-card__location")
+                    loc = loc_el.get_text(strip=True) if loc_el else location
 
-                if not job_id:
-                    continue
+                    time_el = card.select_one("time")
+                    posted_time = time_el.get_text(strip=True) if time_el else ""
 
-                clean_url = f"https://www.linkedin.com/jobs/view/{job_id}"
+                    link_el = card.select_one("a.base-card__full-link, a")
+                    raw_url = link_el.get("href", "") if link_el else ""
 
-                jobs.append({
-                    "job_id": job_id,
-                    "title": title,
-                    "company": company,
-                    "company_url": company_url,
-                    "location": loc,
-                    "posted_time": posted_time,
-                    "job_url": clean_url,
-                    "keyword": keyword
-                })
+                    if not job_id and raw_url:
+                        match = re.search(r"-(\d+)\?", raw_url) or re.search(r"/view/(\d+)", raw_url)
+                        if match:
+                            job_id = match.group(1)
 
-        except Exception as e:
-            print(f"❌ خطأ أثناء البحث في لينكدإن ({keyword} - {location}): {e}")
+                    if not job_id:
+                        continue
+
+                    if job_id in seen_job_ids:
+                        continue
+                    seen_job_ids.add(job_id)
+
+                    clean_url = f"https://www.linkedin.com/jobs/view/{job_id}"
+
+                    jobs.append({
+                        "job_id": job_id,
+                        "title": title,
+                        "company": company,
+                        "company_url": company_url,
+                        "location": loc,
+                        "posted_time": posted_time,
+                        "job_url": clean_url,
+                        "keyword": keyword
+                    })
+            except Exception as e:
+                print(f"⚠️ خطأ أثناء قراءة قائمة وظائف لينكدإن ({keyword}): {e}")
 
         return jobs
 

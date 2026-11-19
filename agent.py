@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import time
+import random
 import warnings
 warnings.filterwarnings("ignore")
 import argparse
@@ -53,8 +54,10 @@ STRICT_TARGET_TITLES = [
 # 4. Technology, Information and Internet
 STRICT_ALLOWED_INDUSTRIES_EN = [
     "software development",
+    "computer software",
     "information technology & services",
     "information technology and services",
+    "information technology",
     "it services and it consulting",
     "it services & it consulting",
     "accounting",
@@ -149,17 +152,48 @@ def is_strictly_allowed_industry(industry_text: str) -> bool:
     return False
 
 
-def is_riyadh_company(location_text: str, subtitle_text: str = "") -> bool:
-    """
-    فحص موقع صفحة الشركة:
-    يجب أن تكون المدينة/الدولة المكتوبة في صفحة الشركة أو مقرها الرئيسي هي الرياض (Riyadh).
-    إذا كانت مسجلة في مدينة أخرى مثل (Jeddah, Dubai, Cairo...) بدون الرياض، تُرفض فوراً.
-    """
-    full_text = f"{location_text} {subtitle_text}".lower()
-    if not full_text.strip():
-        return False
+SAUDI_NON_RIYADH_CITIES = [
+    "jeddah", "جدة", "makkah", "مكة", "dammam", "الدمام",
+    "khobar", "الخبر", "dhahran", "الظهران", "jubail", "الجبيل",
+    "medina", "المدينة", "yanbu", "ينبع", "tabuk", "تبوك",
+    "abha", "أبها", "jizan", "جازان", "taif", "الطائف"
+]
 
-    return "riyadh" in full_text or "الرياض" in full_text
+OTHER_EXCLUDED_REGIONS = [
+    "dubai", "دبي", "cairo", "القاهرة", "alexandria", "الإسكندرية",
+    "giza", "الجيزة", "amman", "عمان", "beirut", "بيروت", "doha", "الدوحة",
+    "kuwait", "الكويت", "manama", "المنامة"
+]
+
+
+def is_riyadh_company(location_text: str, subtitle_text: str = "", job_location: str = "") -> bool:
+    """
+    فحص موقع صفحة الشركة وموقع الوظيفة:
+    1. إذا كانت الشركة مسجلة في مدينة سعودية أخرى غير الرياض (مثل جدة، مكة، الدمام...) -> تُرفض فوراً (مثل exCeed في جدة).
+    2. إذا كانت مسجلة في عاصمة/مدينة عربية أخرى (مثل القاهرة، دبي...) -> تُرفض.
+    3. تُقبل إذا كان مقر الشركة صراحةً في الرياض (مثل قيود، وافق، يوكسل، دفترا).
+    4. تُقبل إذا كانت شركة برمجيات/حلول عالمية (مثل Salesforce, UiPath, SAP) والوظيفة نفسها مقرها الرياض.
+    """
+    comp_text = f"{location_text} {subtitle_text}".lower()
+    job_text = (job_location or "").lower()
+
+    # إذا كانت الشركة مسجلة في مدينة سعودية أخرى خارج الرياض -> رفض قاطع (مثل exCeed في جدة)
+    for city in SAUDI_NON_RIYADH_CITIES:
+        if city in comp_text and "riyadh" not in comp_text and "الرياض" not in comp_text:
+            return False
+
+    # إذا كان مقر الشركة المسجل في لينكدإن هو الرياض -> مقبولة فوراً
+    if "riyadh" in comp_text or "الرياض" in comp_text:
+        return True
+
+    # إذا كانت الوظيفة نفسها مقرها الرياض والشركة ليست في مدينة سعودية أخرى
+    if "riyadh" in job_text or "الرياض" in job_text:
+        for other in OTHER_EXCLUDED_REGIONS:
+            if other in comp_text and "riyadh" not in comp_text and "الرياض" not in comp_text:
+                return False
+        return True
+
+    return False
 
 
 def is_within_working_hours(start_hour: int = 10, end_hour: int = 24) -> bool:
@@ -297,9 +331,11 @@ class JobAgent:
         total_new = 0
         total_matched = 0
         total_notified = 0
+        cycle_seen_ids = set()
 
         for keyword in keywords:
             for location in locations:
+                time.sleep(random.uniform(2.0, 4.0))
                 print(f"\n🔍 البحث في LinkedIn عن: '{keyword}' في '{location}'...")
                 jobs = self.scraper.search_jobs(
                     keyword=keyword,
@@ -314,17 +350,18 @@ class JobAgent:
                     total_scraped += 1
                     job_id = job["job_id"]
 
-                    # التحقق الصارم من عدم تكرار الوظائف المرسلة للمستخدم
-                    if self.storage.is_already_notified(job_id, company=job.get("company", ""), title=job.get("title", "")):
+                    # منع تكرار فحص نفس الوظيفة إذا تكررت في أكثر من كلمة بحث خلال نفس الدورة
+                    if job_id in cycle_seen_ids:
                         continue
+                    cycle_seen_ids.add(job_id)
 
-                    # التحقق إذا كانت الوظيفة مفحوصة ومستبعدة مسبقاً
-                    if self.storage.is_seen(job_id):
+                    # التحقق الصارم من عدم تكرار أي وظيفة أُرسلت للمستخدم نهائياً (notified = 1)
+                    if self.storage.is_already_notified(job_id, company=job.get("company", ""), title=job.get("title", "")):
                         continue
 
                     total_new += 1
                     posted_time = job.get("posted_time", "")
-                    max_hours = self.config.get("scheduler", {}).get("max_posted_hours", 8)
+                    max_hours = self.config.get("scheduler", {}).get("max_posted_hours", 24)
 
                     # 1. الفحص الصارم للمسمى الوظيفي: يجب أن يطابق حصراً قائمة الأستاذ أحمد
                     if not matches_target_titles(job["title"]):
@@ -379,54 +416,38 @@ class JobAgent:
                     # يجب أن تكون ضمن الـ 4 مجالات حصراً:
                     # Software Development, Information Technology & Services, Accounting, Technology, Information and Internet
                     if not is_strictly_allowed_industry(all_industry_text):
-                        if not any(k in desc.lower() for k in ["software development", "saas", "erp", "accounting software"]):
-                            print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): قطاع الشركة ({all_industry_text or 'غير مصنف'}) ليس ضمن المجالات الـ 4 المطلوبة حصراً.")
-                            self.storage.save_job(
-                                job_id=job_id,
-                                title=job["title"],
-                                company=job["company"],
-                                location=job["location"],
-                                job_url=job["job_url"],
-                                match_score=0,
-                                is_match=False,
-                                match_summary=f"قطاع الشركة خارج الـ 4 مجالات ({all_industry_text})",
-                                notified=False
-                            )
-                            continue
+                        print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): قطاع الشركة ({all_industry_text or 'غير مصنف'}) ليس ضمن المجالات الـ 4 المطلوبة حصراً.")
+                        self.storage.save_job(
+                            job_id=job_id,
+                            title=job["title"],
+                            company=job["company"],
+                            location=job["location"],
+                            job_url=job["job_url"],
+                            match_score=0,
+                            is_match=False,
+                            match_summary=f"قطاع الشركة خارج الـ 4 مجالات ({all_industry_text})",
+                            notified=False
+                        )
+                        continue
 
-                    # 4. الفحص الصارم لمقر الشركة على لينكدإن:
-                    # يجب أن تكون دولة/مدينة الصفحة المكتوبة في الشركة هي الرياض (Riyadh) حصراً
-                    if comp_location or comp_subtitle:
-                        if not is_riyadh_company(comp_location, comp_subtitle):
-                            print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): مقر الشركة على لينكدإن ({comp_location or comp_subtitle}) ليس في الرياض (Riyadh).")
-                            self.storage.save_job(
-                                job_id=job_id,
-                                title=job["title"],
-                                company=job["company"],
-                                location=job["location"],
-                                job_url=job["job_url"],
-                                match_score=0,
-                                is_match=False,
-                                match_summary=f"مقر الشركة ليس في الرياض ({comp_location})",
-                                notified=False
-                            )
-                            continue
-                    else:
-                        job_loc = job.get("location", "") or job_details.get("job_location", "")
-                        if not is_riyadh_company(job_loc):
-                            print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): موقع الوظيفة ({job_loc}) ليس في الرياض (Riyadh).")
-                            self.storage.save_job(
-                                job_id=job_id,
-                                title=job["title"],
-                                company=job["company"],
-                                location=job["location"],
-                                job_url=job["job_url"],
-                                match_score=0,
-                                is_match=False,
-                                match_summary=f"الموقع ليس في الرياض ({job_loc})",
-                                notified=False
-                            )
-                            continue
+                    # 4. الفحص الصارم لمقر الشركة على لينكدإن وموقع الوظيفة:
+                    # يجب أن تكون الشركة مسجلة في الرياض (Riyadh) حصراً للمؤسسات المحلية
+                    # أو شركة برمجيات عالمية تعين لمكتب الرياض
+                    job_loc = job.get("location", "") or job_details.get("job_location", "")
+                    if not is_riyadh_company(comp_location, comp_subtitle, job_loc):
+                        print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): مقر الشركة ({comp_location or comp_subtitle or job_loc}) ليس في الرياض (Riyadh).")
+                        self.storage.save_job(
+                            job_id=job_id,
+                            title=job["title"],
+                            company=job["company"],
+                            location=job["location"],
+                            job_url=job["job_url"],
+                            match_score=0,
+                            is_match=False,
+                            match_summary=f"مقر الشركة ليس في الرياض ({comp_location or job_loc})",
+                            notified=False
+                        )
+                        continue
 
                     # إضافة بيانات التصنيف والمقر في بيانات الوظيفة لإظهارها بالرسالة
                     job["company_industry"] = comp_industry or (", ".join(job_industries) if job_industries else "Software & Tech")
