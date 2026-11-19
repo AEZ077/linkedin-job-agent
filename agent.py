@@ -164,11 +164,17 @@ def is_riyadh_company(location_text: str, subtitle_text: str = "") -> bool:
 
 def is_within_working_hours(start_hour: int = 10, end_hour: int = 24) -> bool:
     """
-    التحقق من أن الوقت الحالي يقع ضمن ساعات العمل المحددة:
+    التحقق من أن الوقت الحالي يقع ضمن ساعات العمل المحددة بتوقيت الرياض (KSA):
     من الساعة 10:00 صباحاً وحتى 12:00 منتصف الليل (24:00)
     """
     from datetime import datetime
-    current_hour = datetime.now().hour
+    try:
+        from zoneinfo import ZoneInfo
+        current_hour = datetime.now(ZoneInfo("Asia/Riyadh")).hour
+    except Exception:
+        # احتساب فارق التوقيت (+3 ساعات عن توقيت جرينتش UTC للرياض)
+        import datetime as dt
+        current_hour = (datetime.now(dt.timezone.utc).hour + 3) % 24
     return start_hour <= current_hour < end_hour
 
 
