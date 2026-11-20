@@ -166,34 +166,23 @@ OTHER_EXCLUDED_REGIONS = [
 ]
 
 
-def is_riyadh_company(location_text: str, subtitle_text: str = "", job_location: str = "") -> bool:
+def is_riyadh_company(location_text: str, subtitle_text: str = "") -> bool:
     """
-    فحص موقع صفحة الشركة وموقع الوظيفة:
-    1. إذا كانت الشركة مسجلة في مدينة سعودية أخرى غير الرياض (مثل جدة، مكة، الدمام...) -> تُرفض فوراً (مثل exCeed في جدة).
-    2. إذا كانت مسجلة في عاصمة/مدينة عربية أخرى (مثل القاهرة، دبي...) -> تُرفض.
-    3. تُقبل إذا كان مقر الشركة صراحةً في الرياض (مثل قيود، وافق، يوكسل، دفترا).
-    4. تُقبل إذا كانت شركة برمجيات/حلول عالمية (مثل Salesforce, UiPath, SAP) والوظيفة نفسها مقرها الرياض.
+    فحص موقع صفحة الشركة حصراً كما طلب الأستاذ أحمد:
+    يجب أن تكون الدولة/المدينة المكتوبة في صفحة الشركة أو عنوانها على لينكدإن هي الرياض (Riyadh) حصراً.
+    إذا كانت مسجلة في أي مكان آخر (مثل exCeed في جدة، أو ماستركارد في نيويورك، أو أمازون في سياتل) تُرفض فوراً.
     """
     comp_text = f"{location_text} {subtitle_text}".lower()
-    job_text = (job_location or "").lower()
+    if not comp_text.strip():
+        return False
 
     # إذا كانت الشركة مسجلة في مدينة سعودية أخرى خارج الرياض -> رفض قاطع (مثل exCeed في جدة)
     for city in SAUDI_NON_RIYADH_CITIES:
         if city in comp_text and "riyadh" not in comp_text and "الرياض" not in comp_text:
             return False
 
-    # إذا كان مقر الشركة المسجل في لينكدإن هو الرياض -> مقبولة فوراً
-    if "riyadh" in comp_text or "الرياض" in comp_text:
-        return True
-
-    # إذا كانت الوظيفة نفسها مقرها الرياض والشركة ليست في مدينة سعودية أخرى
-    if "riyadh" in job_text or "الرياض" in job_text:
-        for other in OTHER_EXCLUDED_REGIONS:
-            if other in comp_text and "riyadh" not in comp_text and "الرياض" not in comp_text:
-                return False
-        return True
-
-    return False
+    # الشرط الصارم الحصري: يجب أن يُذكر "Riyadh" أو "الرياض" في صفحة الشركة أو عنوانها على لينكدإن
+    return "riyadh" in comp_text or "الرياض" in comp_text
 
 
 def is_within_working_hours(start_hour: int = 10, end_hour: int = 24) -> bool:
@@ -306,6 +295,13 @@ class JobAgent:
         if not is_within_working_hours(start_hour, end_hour):
             print(f"⏸️ حالياً خارج ساعات العمل المحددة ({start_hour}:00 ص إلى 12:00 منتصف الليل). الـ Agent في وضع السكون حتى الصباح.")
             return {"scraped": 0, "new": 0, "matched": 0, "notified": 0}
+
+        # مزامنة قاعدة البيانات مع جيت هب لتفادي أي تكرار مع السيرفر السحابي
+        try:
+            import subprocess
+            subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=str(self.base_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+        except Exception:
+            pass
 
         print("\n" + "=" * 60)
         print(f"🚀 بدء دورة بحث ومطابقة جديدة: {time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -430,12 +426,10 @@ class JobAgent:
                         )
                         continue
 
-                    # 4. الفحص الصارم لمقر الشركة على لينكدإن وموقع الوظيفة:
-                    # يجب أن تكون الشركة مسجلة في الرياض (Riyadh) حصراً للمؤسسات المحلية
-                    # أو شركة برمجيات عالمية تعين لمكتب الرياض
-                    job_loc = job.get("location", "") or job_details.get("job_location", "")
-                    if not is_riyadh_company(comp_location, comp_subtitle, job_loc):
-                        print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): مقر الشركة ({comp_location or comp_subtitle or job_loc}) ليس في الرياض (Riyadh).")
+                    # 4. الفحص الصارم لمقر صفحة الشركة على لينكدإن:
+                    # يجب أن تكون الدولة/المدينة المكتوبة في صفحة الشركة على لينكدإن هي الرياض (Riyadh) حصراً
+                    if not is_riyadh_company(comp_location, comp_subtitle):
+                        print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): مقر صفحة الشركة على لينكدإن ({comp_location or comp_subtitle or 'غير محدد'}) ليس في الرياض (Riyadh).")
                         self.storage.save_job(
                             job_id=job_id,
                             title=job["title"],
@@ -444,7 +438,7 @@ class JobAgent:
                             job_url=job["job_url"],
                             match_score=0,
                             is_match=False,
-                            match_summary=f"مقر الشركة ليس في الرياض ({comp_location or job_loc})",
+                            match_summary=f"مقر صفحة الشركة ليس في الرياض ({comp_location or comp_subtitle})",
                             notified=False
                         )
                         continue
@@ -503,6 +497,16 @@ class JobAgent:
         print(f"   • وظائف متطابقة مع سيرتك الذاتية: {total_matched}")
         print(f"   • إشعارات أُرسلت لواتساب: {total_notified}")
         print("=" * 60 + "\n")
+
+        # مزامنة قاعدة البيانات محلياً مع جيت هب عند العثور على أي وظائف جديدة لمنع التكرار
+        if total_notified > 0:
+            try:
+                import subprocess
+                subprocess.run(["git", "add", "jobs.db", "cv_profile.json"], cwd=str(self.base_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+                subprocess.run(["git", "commit", "-m", "chore: sync local seen jobs [skip ci]"], cwd=str(self.base_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+                subprocess.run(["git", "push", "origin", "main"], cwd=str(self.base_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+            except Exception:
+                pass
 
         return {
             "scraped": total_scraped,
