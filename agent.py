@@ -288,13 +288,10 @@ class JobAgent:
         3. فلترة مجال الشركة (التك والبرمجيات والاستشارات).
         4. إرسال الوظائف المتطابقة فوراً على تيليجرام.
         """
+        # يعمل الـ Agent على مدار الساعة (24/7) دون إيقاف بناءً على طلب الأستاذ أحمد
         sched_cfg = self.config.get("scheduler", {})
-        start_hour = sched_cfg.get("start_hour", 10)
+        start_hour = sched_cfg.get("start_hour", 0)
         end_hour = sched_cfg.get("end_hour", 24)
-
-        if not is_within_working_hours(start_hour, end_hour):
-            print(f"⏸️ حالياً خارج ساعات العمل المحددة ({start_hour}:00 ص إلى 12:00 منتصف الليل). الـ Agent في وضع السكون حتى الصباح.")
-            return {"scraped": 0, "new": 0, "matched": 0, "notified": 0}
 
         # مزامنة قاعدة البيانات مع جيت هب لتفادي أي تكرار مع السيرفر السحابي
         try:
