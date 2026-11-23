@@ -8,6 +8,10 @@ on:
   repository_dispatch:
     types: [run-hunter]
 
+concurrency:
+  group: job-hunter-agent
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
