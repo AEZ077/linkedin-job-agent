@@ -55,7 +55,7 @@ class ResumeParser:
         else:
             raise ValueError(f"صيغة الملف {suffix} غير مدعومة حالياً. يرجى استخدام PDF أو TXT أو MD.")
 
-    def get_or_parse_profile(self, gemini_api_key: Optional[str] = None) -> Dict[str, Any]:
+    def get_or_parse_profile(self, gemini_api_key: Optional[str] = None, model_name: str = "gemini-3.5-flash-lite") -> Dict[str, Any]:
         """جلب البروفايل من الكاش أو تحليله عبر Gemini إذا كان جديداً"""
         current_hash = self._calculate_file_hash()
         
@@ -106,7 +106,7 @@ class ResumeParser:
 {raw_text}
 """
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=model_name,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"

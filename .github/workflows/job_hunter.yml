@@ -2,9 +2,9 @@ name: LinkedIn Job Hunter Agent
 
 on:
   schedule:
-    # يعمل كل 15 دقيقة على مدار الـ 24 ساعة
-    - cron: '3,18,33,48 * * * *'
-  workflow_dispatch: # يتيح لك تشغيله يدوياً بضغطة زر في أي وقت لتجربته
+    # أعلى تردد يدعمه GitHub Actions تلقائياً (كل 5 دقائق) كخطة احتياطية
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
   repository_dispatch:
     types: [run-hunter]
 
@@ -18,6 +18,7 @@ permissions:
 jobs:
   hunt:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,14 +34,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Job Hunter Agent
+      - name: Run Job Hunter Agent (Fast 90s Polling)
         env:
           TZ: "Asia/Riyadh"
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python agent.py --run-once
+          python agent.py --poll-minutes 3 --interval-seconds 90
 
       - name: Save and commit updated database
         run: |

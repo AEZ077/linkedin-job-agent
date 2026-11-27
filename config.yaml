@@ -8,50 +8,46 @@ cv:
 
 # تفاصيل الوظائف المستهدفة
 search:
-  # كلمات البحث الأساسية (تغطي كافة المسميات والـ 14 دور المطلوبين بذكاء لمنع حظر الطلبات 429)
+  # استعلامات Boolean OR ذكية تغطي كافة المسميات الـ 14 والقريبة منها في 3 طلبات فقط لتفادي حظر 429 وتسريع الفحص
   keywords:
-    - "Account Manager"
-    - "Customer Success"
-    - "Sales Team Lead"
-    - "Sales Supervisor"
-    - "Business Development Team Lead"
-    - "Customer Experience"
+    - '("Account Manager" OR "Account Management" OR "Key Account")'
+    - '("Customer Success" OR "Customer Experience" OR "Client Success")'
+    - '("Sales Team Lead" OR "Sales Supervisor" OR "Business Development Team Lead" OR "Retention Team Lead" OR "Sales Retention")'
 
-  # المناطق الجغرافية المستهدفة للبحث (مقر الشركة يجب أن يكون في الرياض حصراً)
+  # المناطق الجغرافية المستهدفة للبحث (مع التحقق الصارم أن صفحة الشركة في الرياض)
   locations:
     - "Riyadh, Saudi Arabia"
     - "Saudi Arabia"
 
   # نطاق وقت نشر الوظيفة في لينكدإن:
-  # r86400 = آخر 24 ساعة فقط (يمنع تماماً الوظائف القديمة المنشورة منذ أيام)
+  # r86400 = آخر 24 ساعة مع الترتيب بالأحدث أولاً (sortBy=DD) لالتقاط الوظائف فور نزولها
   time_range: "r86400"
 
-  # أقصى عدد وظائف يتم جلبها لكل مسمى في كل جولة
-  max_jobs_per_keyword: 15
+  # أقصى عدد وظائف يتم جلبها لكل استعلام في كل جولة (صفحة واحدة الأحدث)
+  max_jobs_per_keyword: 10
 
 # إعدادات الذكاء الاصطناعي والمطابقة
 matching:
-  # أقل نسبة تطابق مقبولة لإرسال الإشعار لواتساب
-  min_match_score: 70
+  # أقل نسبة تطابق حقيقية مقبولة لإرسال الإشعار لتيليجرام
+  min_match_score: 65
   gemini_model: "gemini-3.5-flash-lite"
   summary_language: "arabic"
 
-# إعدادات الجدولة الزمنية وساعات العمل
+# إعدادات الجدولة الزمنية (24/7 بدون توقف)
 scheduler:
-  # التشغيل على مدار الـ 24 ساعة بدون انقطاع
-  interval_minutes: 15
+  interval_minutes: 5
   start_hour: 0
   end_hour: 24
-  # الحد الأقصى لعمر نشر الوظيفة بالساعات (حتى 24 ساعة لضمان تغطية وظائف المساء والصباح)
   max_posted_hours: 24
 
-# القطاعات الـ 4 المحددة حصراً من المستخدم ومقرها الرياض:
+# القطاعات الـ 4 المحددة حصراً من المستخدم ومقر صفحة الشركة الرياض:
+# الأولوية القصوى لشركات الـ Tech (أول 3 قطاعات)
 industries:
   - "Software Development"
   - "Information Technology & Services"
-  - "Accounting"
   - "Technology, Information and Internet"
+  - "Accounting"
 
-# قناة الإشعار: telegram (الأفضل والمجاني 100%) أو email أو callmebot
+# قناة الإشعار: telegram (المجاني والفوري 100%)
 notifier:
   provider: "telegram"

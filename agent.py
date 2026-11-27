@@ -1,57 +1,32 @@
 #!/usr/bin/env python3
 """
 المنسق الرئيسي لـ AI Job Agent
-يقوم بربط قراءة السيرة الذاتية، البحث في لينكدإن، التحليل الذكي عبر Gemini،
-والإرسال المباشر إلى واتساب.
+يربط قراءة السيرة الذاتية، البحث السريع في لينكدإن (sortBy=DD)، الفلترة الصارمة،
+أولوية شركات الـ Tech، التقييم الواقعي عبر Gemini، والإرسال الفوري إلى تيليجرام.
 """
 
-import os
-import re
-import sys
-import time
-import random
-import warnings
-warnings.filterwarnings("ignore")
 import argparse
+import os
+import random
+import re
+import subprocess
+import time
+import warnings
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict, List
+
 import yaml
 from dotenv import load_dotenv
 
-# استيراد الوحدات الداخلية
-from storage import JobStorage
-from resume_parser import ResumeParser
-from linkedin_scraper import LinkedInScraper
+warnings.filterwarnings("ignore")
+
 from job_matcher import JobMatcher
-from notifier import WhatsAppNotifier
+from linkedin_scraper import LinkedInScraper
+from notifier import JobNotifier
+from resume_parser import ResumeParser
+from storage import JobStorage
 
 
-# القائمة الحصرية الصارمة للمسميات المطلوبة من الأستاذ أحمد فقط (14 مسمى حصراً)
-STRICT_TARGET_TITLES = [
-    "sales account manager",
-    "senior sales account manager",
-    "senior account manager",
-    "senior account management",
-    "sales team lead",
-    "sales team leader",
-    "account manager team leader",
-    "account manager team lead",
-    "account management team leader",
-    "account management team lead",
-    "sales supervisor",
-    "business development team lead",
-    "bd team lead",
-    "head of customer experience",
-    "sales retention team lead",
-    "retention team lead",
-    "senior customer success specialist"
-]
-
-# المجالات الـ 4 المطلوبة حصراً لقطاع الشركة
-# 1. Software Development
-# 2. Information Technology & Services (بما فيها IT Services and IT Consulting)
-# 3. Accounting
-# 4. Technology, Information and Internet
 STRICT_ALLOWED_INDUSTRIES_EN = [
     "software development",
     "computer software",
@@ -62,7 +37,7 @@ STRICT_ALLOWED_INDUSTRIES_EN = [
     "it services & it consulting",
     "accounting",
     "technology, information and internet",
-    "technology, information & internet"
+    "technology, information & internet",
 ]
 
 STRICT_ALLOWED_INDUSTRIES_AR = [
@@ -76,43 +51,89 @@ STRICT_ALLOWED_INDUSTRIES_AR = [
     "محاسبة",
     "المحاسبة",
     "التكنولوجيا والمعلومات والإنترنت",
-    "التقنية والمعلومات والإنترنت"
+    "التقنية والمعلومات والإنترنت",
 ]
 
+TECH_INDUSTRY_MARKERS = [
+    "software",
+    "information technology",
+    "it services",
+    "technology, information",
+    "internet",
+    "تطوير البرمجيات",
+    "تطوير البرامج",
+    "تكنولوجيا المعلومات",
+    "تقنية المعلومات",
+    "التكنولوجيا",
+    "التقنية",
+]
 
 TARGET_TITLE_PATTERNS = [
     r"\baccount\s+manager\b",
-    r"\baccount\s+executive\b",
     r"\baccount\s+management\b",
+    r"\baccount\s+executive\b",
     r"\bkey\s+account\b",
+    r"\baccount\s+director\b",
     r"\bclient\s+success\b",
     r"\bcustomer\s+success\b",
     r"\bcustomer\s+experience\b",
-    r"\bsales\s+team\s+lead\b",
-    r"\bsales\s+team\s+leader\b",
+    r"\bhead\s+of\s+cx\b",
+    r"\bsales\s+team\s+lead(?:er)?\b",
     r"\bsales\s+supervisor\b",
-    r"\bretention\s+team\s+lead\b",
+    r"\bretention\s+team\s+lead(?:er)?\b",
     r"\bsales\s+retention\b",
-    r"\bbusiness\s+development\s+team\s+lead\b",
-    r"\bbd\s+team\s+lead\b"
+    r"\bbusiness\s+development\s+team\s+lead(?:er)?\b",
+    r"\bbd\s+team\s+lead(?:er)?\b",
 ]
 
 EXCLUDED_TITLE_KEYWORDS = [
-    "cash van", "cashier", "store manager", "retail sales", "retail manager",
-    "medical representative", "pharma", "clinic", "hospital", "doctor", "nurse",
-    "call center agent", "tele sales", "telesales", "outdoor sales",
-    "real estate agent", "automotive", "car sales", "mechanic", "waiter", "chef",
-    "assistant store", "district manager", "branch manager", "leasing team leader",
-    "marketing campaigns", "operations"
+    "intern",
+    "internship",
+    "trainee",
+    "fresh graduate",
+    "rotational",
+    "associate analyst",
+    "cash van",
+    "cashier",
+    "store manager",
+    "retail sales",
+    "retail manager",
+    "medical representative",
+    "pharma",
+    "clinic",
+    "hospital",
+    "doctor",
+    "nurse",
+    "call center agent",
+    "tele sales",
+    "telesales",
+    "outdoor sales",
+    "real estate agent",
+    "automotive",
+    "car sales",
+    "mechanic",
+    "waiter",
+    "chef",
+    "driver",
+    "merchandiser",
+    "assistant store",
+    "district manager",
+    "branch manager",
+    "leasing team leader",
+    "marketing campaigns",
+    "operations",
+]
+
+SAUDI_NON_RIYADH_CITIES = [
+    "jeddah", "جدة", "makkah", "مكة", "dammam", "الدمام",
+    "khobar", "الخبر", "dhahran", "الظهران", "jubail", "الجبيل",
+    "medina", "المدينة", "yanbu", "ينبع", "tabuk", "تبوك",
+    "abha", "أبها", "jizan", "جازان", "taif", "الطائف",
 ]
 
 
-def matches_target_titles(job_title: str, target_keywords: list = None) -> bool:
-    """
-    فحص ذكي ودقيق للمسمى الوظيفي:
-    يطابق جميع أدوار إدارة الحسابات، قيادة المبيعات، نجاح العملاء، وتجربة العملاء.
-    ويستبعد تماماً وظائف الفروع، المعارض، السيارات، والمستشفيات.
-    """
+def matches_target_titles(job_title: str) -> bool:
+    """مطابقة المسميات الـ 14 المطلوبة والقريبة منها واستبعاد الأدوار غير المناسبة."""
     clean_title = re.sub(r"[^\w\s]", " ", job_title.lower())
     clean_title = clean_title.replace("manger", "manager")
     clean_title = " ".join(clean_title.split())
@@ -129,14 +150,7 @@ def matches_target_titles(job_title: str, target_keywords: list = None) -> bool:
 
 
 def is_strictly_allowed_industry(industry_text: str) -> bool:
-    """
-    فحص قطاع الشركة الصارم:
-    يجب أن يقع حصراً تحت أحد البنود الأربعة المحددة:
-    1. Software Development
-    2. Information Technology & Services (و IT Services and IT Consulting)
-    3. Accounting
-    4. Technology, Information and Internet
-    """
+    """التحقق من أن قطاع الشركة ضمن الـ 4 قطاعات المطلوبة حصراً."""
     if not industry_text:
         return False
 
@@ -152,78 +166,42 @@ def is_strictly_allowed_industry(industry_text: str) -> bool:
     return False
 
 
-SAUDI_NON_RIYADH_CITIES = [
-    "jeddah", "جدة", "makkah", "مكة", "dammam", "الدمام",
-    "khobar", "الخبر", "dhahran", "الظهران", "jubail", "الجبيل",
-    "medina", "المدينة", "yanbu", "ينبع", "tabuk", "تبوك",
-    "abha", "أبها", "jizan", "جازان", "taif", "الطائف"
-]
-
-OTHER_EXCLUDED_REGIONS = [
-    "dubai", "دبي", "cairo", "القاهرة", "alexandria", "الإسكندرية",
-    "giza", "الجيزة", "amman", "عمان", "beirut", "بيروت", "doha", "الدوحة",
-    "kuwait", "الكويت", "manama", "المنامة"
-]
+def is_tech_industry(industry_text: str) -> bool:
+    """تحديد ما إذا كانت الشركة في مجال التكنولوجيا لإعطائها الأولوية القصوى."""
+    if not industry_text:
+        return False
+    t = industry_text.lower()
+    return any(marker in t for marker in TECH_INDUSTRY_MARKERS)
 
 
 def is_riyadh_company(location_text: str, subtitle_text: str = "") -> bool:
-    """
-    فحص موقع صفحة الشركة حصراً كما طلب الأستاذ أحمد:
-    يجب أن تكون الدولة/المدينة المكتوبة في صفحة الشركة أو عنوانها على لينكدإن هي الرياض (Riyadh) حصراً.
-    إذا كانت مسجلة في أي مكان آخر (مثل exCeed في جدة، أو ماستركارد في نيويورك، أو أمازون في سياتل) تُرفض فوراً.
-    """
+    """التحقق الصارم من أن مقر/موقع صفحة الشركة على LinkedIn هو الرياض (Riyadh)."""
     comp_text = f"{location_text} {subtitle_text}".lower()
     if not comp_text.strip():
         return False
 
-    # إذا كانت الشركة مسجلة في مدينة سعودية أخرى خارج الرياض -> رفض قاطع (مثل exCeed في جدة)
     for city in SAUDI_NON_RIYADH_CITIES:
         if city in comp_text and "riyadh" not in comp_text and "الرياض" not in comp_text:
             return False
 
-    # الشرط الصارم الحصري: يجب أن يُذكر "Riyadh" أو "الرياض" في صفحة الشركة أو عنوانها على لينكدإن
     return "riyadh" in comp_text or "الرياض" in comp_text
 
 
-def is_within_working_hours(start_hour: int = 10, end_hour: int = 24) -> bool:
-    """
-    التحقق من أن الوقت الحالي يقع ضمن ساعات العمل المحددة بتوقيت الرياض (KSA):
-    من الساعة 10:00 صباحاً وحتى 12:00 منتصف الليل (24:00)
-    """
-    from datetime import datetime
-    try:
-        from zoneinfo import ZoneInfo
-        current_hour = datetime.now(ZoneInfo("Asia/Riyadh")).hour
-    except Exception:
-        # احتساب فارق التوقيت (+3 ساعات عن توقيت جرينتش UTC للرياض)
-        import datetime as dt
-        current_hour = (datetime.now(dt.timezone.utc).hour + 3) % 24
-    return start_hour <= current_hour < end_hour
-
-
-def is_posted_within_max_hours(time_text: str, max_hours: int = 8) -> bool:
-    """
-    التحقق الصارم من أن الوظيفة حديثة ونُشرت اليوم بحد أقصى 8 ساعات فقط.
-    يتم رفض أي وظيفة نُشرت منذ أيام أو أسابيع أو شهور، أو ليس لها تاريخ نشر يثبت أنها اليوم.
-    """
+def is_posted_within_max_hours(time_text: str, max_hours: int = 24) -> bool:
+    """التحقق من أن الوظيفة منشورة خلال الحد الأقصى للساعات المحدد."""
     if not time_text:
-        return False  # رفض صارم إذا لم يذكر الوقت لتفادي الوظائف القديمة
+        return False
 
     t = time_text.lower().strip()
-
-    # إذا كانت منذ أيام أو أسابيع أو شهور -> مرفوضة قطعاً
     if any(w in t for w in ["day", "week", "month", "year", "يوم", "أسبوع", "شهر", "d ago", "w ago", "mo ago"]):
         return False
 
-    # إذا كانت منذ دقائق أو ثواني أو لحظات -> مقبولة فوراً
-    if any(m in t for m in ["minute", "min", "second", "sec", "just now", "لحظات", "دقيقة"]):
+    if any(m in t for m in ["minute", "min", "second", "sec", "just now", "لحظات", "دقيقة", "ثانية"]):
         return True
 
-    # فحص عدد الساعات (مثل: '2 hours ago' أو '4 hours ago' أو '8 hours ago')
     match = re.search(r"(\d+)\s*(?:hour|hr|h|ساعة|ساعات)", t)
     if match:
-        hours = int(match.group(1))
-        return hours <= max_hours
+        return int(match.group(1)) <= max_hours
 
     return False
 
@@ -233,31 +211,30 @@ class JobAgent:
         self.base_dir = base_dir or Path(__file__).parent
         self._load_environment()
         self.config = self._load_config()
+        self.is_github_actions = os.getenv("GITHUB_ACTIONS", "").lower() == "true"
 
-        # تهيئة وحدات النظام
         self.storage = JobStorage(self.base_dir / "jobs.db")
         self.scraper = LinkedInScraper()
 
-        cv_rel_path = self.config.get("cv", {}).get("path", "cv.pdf")
+        cv_rel_path = self.config.get("cv", {}).get("path", "cv.txt")
         cv_path = self.base_dir / cv_rel_path
         if not cv_path.exists() and (self.base_dir / "cv_sample.txt").exists():
-            print(f"ℹ️ لم يتم العثور على '{cv_path.name}'، سيتم استخدام الملف التجريبي 'cv_sample.txt'.")
+            print(f"ℹ️ لم يتم العثور على '{cv_path.name}'، سيتم استخدام '{'cv_sample.txt'}'.")
             cv_path = self.base_dir / "cv_sample.txt"
 
         self.resume_parser = ResumeParser(str(cv_path))
 
         gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
-        gemini_model = self.config.get("matching", {}).get("gemini_model", "gemini-2.5-flash")
-        min_score = self.config.get("matching", {}).get("min_match_score", 75)
+        gemini_model = self.config.get("matching", {}).get("gemini_model", "gemini-3.5-flash-lite")
+        min_score = self.config.get("matching", {}).get("min_match_score", 65)
+        self.gemini_model = gemini_model
         self.matcher = JobMatcher(api_key=gemini_api_key, model_name=gemini_model, min_score=min_score)
 
-        notifier_provider = self.config.get("notifier", {}).get("provider", "callmebot")
-        self.notifier = WhatsAppNotifier(provider=notifier_provider)
-
+        notifier_provider = self.config.get("notifier", {}).get("provider", "telegram")
+        self.notifier = JobNotifier(provider=notifier_provider)
         self.candidate_profile = None
 
     def _load_environment(self):
-        """تحميل المتغيرات من ملف .env"""
         env_path = self.base_dir / ".env"
         if env_path.exists():
             load_dotenv(dotenv_path=env_path)
@@ -265,7 +242,6 @@ class JobAgent:
             load_dotenv()
 
     def _load_config(self) -> Dict[str, Any]:
-        """تحميل إعدادات config.yaml"""
         config_path = self.base_dir / "config.yaml"
         if not config_path.exists():
             print(f"⚠️ ملف الإعدادات غير موجود في {config_path}، سيتم استخدام الإعدادات الافتراضية.")
@@ -274,68 +250,99 @@ class JobAgent:
             return yaml.safe_load(f) or {}
 
     def get_candidate_profile(self) -> Dict[str, Any]:
-        """قراءة وتحليل السيرة الذاتية (مرة واحدة وحفظها في الكاش)"""
         if self.candidate_profile is None:
             gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
-            self.candidate_profile = self.resume_parser.get_or_parse_profile(gemini_key)
+            self.candidate_profile = self.resume_parser.get_or_parse_profile(
+                gemini_key,
+                model_name=self.gemini_model,
+            )
         return self.candidate_profile
 
-    def run_cycle(self) -> Dict[str, int]:
-        """
-        تنفيذ دورة بحث كاملة:
-        1. التحقق من ساعات العمل (من 10 صباحاً إلى 12 منتصف الليل).
-        2. البحث في لينكدإن عن كل كلمة مفتاحية وموقع محددين.
-        3. فلترة مجال الشركة (التك والبرمجيات والاستشارات).
-        4. إرسال الوظائف المتطابقة فوراً على تيليجرام.
-        """
-        # يعمل الـ Agent على مدار الساعة (24/7) دون إيقاف بناءً على طلب الأستاذ أحمد
-        sched_cfg = self.config.get("scheduler", {})
-        start_hour = sched_cfg.get("start_hour", 0)
-        end_hour = sched_cfg.get("end_hour", 24)
-
-        # مزامنة قاعدة البيانات مع جيت هب لتفادي أي تكرار مع السيرفر السحابي
+    def _sync_git_pull(self):
+        if self.is_github_actions:
+            return
         try:
-            import subprocess
-            subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=str(self.base_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+            subprocess.run(
+                ["git", "pull", "--rebase", "origin", "main"],
+                cwd=str(self.base_dir),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+            )
         except Exception:
             pass
+
+    def _sync_git_push(self):
+        if self.is_github_actions:
+            return
+        try:
+            subprocess.run(
+                ["git", "add", "jobs.db", "cv_profile.json"],
+                cwd=str(self.base_dir),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "chore: sync local seen jobs [skip ci]"],
+                cwd=str(self.base_dir),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+            )
+            subprocess.run(
+                ["git", "push", "origin", "main"],
+                cwd=str(self.base_dir),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+            )
+        except Exception:
+            pass
+
+    def run_cycle(self, include_broad_location: bool = True) -> Dict[str, int]:
+        """تنفيذ دورة فحص كاملة مع ترتيب الأولوية لشركات الـ Tech وإرسال الإشعارات الفورية."""
+        self._sync_git_pull()
 
         print("\n" + "=" * 60)
         print(f"🚀 بدء دورة بحث ومطابقة جديدة: {time.strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 60)
 
-        # 1. تجهيز بروفايل السيرة الذاتية
         try:
             profile = self.get_candidate_profile()
             print(f"👤 المرشح: {profile.get('name', 'N/A')} - {profile.get('headline', '')}")
         except Exception as e:
             print(f"❌ خطأ في تحميل السيرة الذاتية: {e}")
-            return {"new_found": 0, "matched": 0, "notified": 0}
+            return {"scraped": 0, "new": 0, "matched": 0, "notified": 0}
 
         search_cfg = self.config.get("search", {})
-        keywords = search_cfg.get("keywords", ["Software Engineer"])
-        locations = search_cfg.get("locations", ["Saudi Arabia"])
+        keywords = search_cfg.get("keywords", ["Account Manager"])
+        locations = list(search_cfg.get("locations", ["Riyadh, Saudi Arabia"]))
+        if not include_broad_location and len(locations) > 1:
+            locations = [locations[0]]
+
         time_range = search_cfg.get("time_range", "r86400")
         work_type = search_cfg.get("work_type", "")
         max_jobs = search_cfg.get("max_jobs_per_keyword", 10)
-        min_score = self.config.get("matching", {}).get("min_match_score", 75)
+        min_score = int(self.config.get("matching", {}).get("min_match_score", 65))
+        max_hours = int(self.config.get("scheduler", {}).get("max_posted_hours", 24))
 
         total_scraped = 0
         total_new = 0
-        total_matched = 0
-        total_notified = 0
         cycle_seen_ids = set()
+        matched_candidates: List[Dict[str, Any]] = []
 
         for keyword in keywords:
             for location in locations:
-                time.sleep(random.uniform(2.0, 4.0))
+                time.sleep(random.uniform(1.5, 3.0))
                 print(f"\n🔍 البحث في LinkedIn عن: '{keyword}' في '{location}'...")
                 jobs = self.scraper.search_jobs(
                     keyword=keyword,
                     location=location,
                     time_range=time_range,
                     work_type=work_type,
-                    max_jobs=max_jobs
+                    max_jobs=max_jobs,
+                    sort_by_recent=True,
                 )
                 print(f"   ↳ تم العثور على {len(jobs)} وظيفة في القائمة.")
 
@@ -343,20 +350,21 @@ class JobAgent:
                     total_scraped += 1
                     job_id = job["job_id"]
 
-                    # منع تكرار فحص نفس الوظيفة إذا تكررت في أكثر من كلمة بحث خلال نفس الدورة
                     if job_id in cycle_seen_ids:
                         continue
                     cycle_seen_ids.add(job_id)
 
-                    # التحقق الصارم من عدم تكرار أي وظيفة أُرسلت للمستخدم نهائياً (notified = 1)
-                    if self.storage.is_already_notified(job_id, company=job.get("company", ""), title=job.get("title", "")):
+                    if self.storage.is_seen(job_id) or self.storage.is_already_notified(
+                        job_id,
+                        company=job.get("company", ""),
+                        title=job.get("title", ""),
+                    ):
                         continue
 
                     total_new += 1
                     posted_time = job.get("posted_time", "")
-                    max_hours = self.config.get("scheduler", {}).get("max_posted_hours", 24)
 
-                    # 1. الفحص الصارم للمسمى الوظيفي: يجب أن يطابق حصراً قائمة الأستاذ أحمد
+                    # 1. فحص المسمى الوظيفي
                     if not matches_target_titles(job["title"]):
                         self.storage.save_job(
                             job_id=job_id,
@@ -366,14 +374,14 @@ class JobAgent:
                             job_url=job["job_url"],
                             match_score=0,
                             is_match=False,
-                            match_summary="المسمى ليس في قائمة المسميات المطلوبة حصراً",
-                            notified=False
+                            match_summary="المسمى خارج القائمة المطلوبة",
+                            notified=False,
                         )
                         continue
 
-                    # 2. فحص وقت النشر: نرفض أي وظيفة مر عليها أكثر من 8 ساعات أو أيام
+                    # 2. فحص حداثة النشر
                     if posted_time and not is_posted_within_max_hours(posted_time, max_hours):
-                        print(f"   ⏳ تم تخطي الوظيفة ({job['title']}) لأنها نُشرت قديمة ({posted_time} - أكثر من {max_hours} ساعات)")
+                        print(f"   ⏳ تخطي وظيفة قديمة ({job['title']} - {posted_time})")
                         self.storage.save_job(
                             job_id=job_id,
                             title=job["title"],
@@ -383,33 +391,41 @@ class JobAgent:
                             match_score=0,
                             is_match=False,
                             match_summary=f"قديمة: {posted_time}",
-                            notified=False
+                            notified=False,
                         )
                         continue
 
-                    print(f"\n✨ وظيفة مستهدفة حديثة ({posted_time or 'اليوم'}): {job['title']} @ {job['company']}")
+                    print(f"\n✨ وظيفة مرشحة حديثة ({posted_time or 'حديثة'}): {job['title']} @ {job['company']}")
 
-                    # جلب تفاصيل الوظيفة ومعايير الصناعة
+                    # 3. جلب التفاصيل الكاملة للوظيفة
                     job_details = self.scraper.fetch_job_details(job_id)
+                    if not job_details.get("ok"):
+                        print(f"   ⚠️ تعذر جلب تفاصيل الوظيفة مؤقتاً ({job_id}) - ستُعاد محاولتها في الدورة القادمة.")
+                        continue
+
                     desc = job_details.get("description", "")
                     job_industries = job_details.get("job_industries", [])
                     company_url = job.get("company_url") or job_details.get("company_url", "")
-                    time.sleep(1)  # تأخير مهذب لتجنب الحظر
+                    time.sleep(1.0)
 
-                    # جلب بيانات وتصنيف ومقر الشركة من صفحتها على لينكدإن
-                    company_profile = self.scraper.fetch_company_profile(company_url) if company_url else {}
+                    # 4. جلب بيانات صفحة الشركة على LinkedIn
+                    company_profile = (
+                        self.scraper.fetch_company_profile(company_url)
+                        if company_url
+                        else {"ok": True, "industry": "", "location": "", "subtitle": ""}
+                    )
+                    if company_url and not company_profile.get("ok"):
+                        print(f"   ⚠️ تعذر فتح صفحة الشركة مؤقتاً ({job['company']}) - ستُعاد محاولتها في الدورة القادمة.")
+                        continue
+
                     comp_industry = company_profile.get("industry", "")
                     comp_location = company_profile.get("location", "")
                     comp_subtitle = company_profile.get("subtitle", "")
-
-                    # دمج معلومات الصناعة من صفحة الشركة ومعايير الوظيفة
                     all_industry_text = f"{comp_industry} {' '.join(job_industries)}".strip()
 
-                    # 3. الفحص الصارم لقطاع وتصنيف الشركة:
-                    # يجب أن تكون ضمن الـ 4 مجالات حصراً:
-                    # Software Development, Information Technology & Services, Accounting, Technology, Information and Internet
+                    # 5. التحقق الصارم من الـ 4 قطاعات
                     if not is_strictly_allowed_industry(all_industry_text):
-                        print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): قطاع الشركة ({all_industry_text or 'غير مصنف'}) ليس ضمن المجالات الـ 4 المطلوبة حصراً.")
+                        print(f"   ⏩ تخطي ({job['company']}): القطاع ({all_industry_text or 'غير محدد'}) خارج الـ 4 قطاعات.")
                         self.storage.save_job(
                             job_id=job_id,
                             title=job["title"],
@@ -418,15 +434,14 @@ class JobAgent:
                             job_url=job["job_url"],
                             match_score=0,
                             is_match=False,
-                            match_summary=f"قطاع الشركة خارج الـ 4 مجالات ({all_industry_text})",
-                            notified=False
+                            match_summary=f"قطاع خارج الـ 4 مجالات ({all_industry_text})",
+                            notified=False,
                         )
                         continue
 
-                    # 4. الفحص الصارم لمقر صفحة الشركة على لينكدإن:
-                    # يجب أن تكون الدولة/المدينة المكتوبة في صفحة الشركة على لينكدإن هي الرياض (Riyadh) حصراً
+                    # 6. التحقق الصارم من أن مقر/موقع صفحة الشركة Riyadh
                     if not is_riyadh_company(comp_location, comp_subtitle):
-                        print(f"   ⏩ تم تخطي الوظيفة ({job['company']}): مقر صفحة الشركة على لينكدإن ({comp_location or comp_subtitle or 'غير محدد'}) ليس في الرياض (Riyadh).")
+                        print(f"   ⏩ تخطي ({job['company']}): صفحة الشركة ({comp_location or comp_subtitle or 'غير محدد'}) ليست Riyadh.")
                         self.storage.save_job(
                             job_id=job_id,
                             title=job["title"],
@@ -435,134 +450,184 @@ class JobAgent:
                             job_url=job["job_url"],
                             match_score=0,
                             is_match=False,
-                            match_summary=f"مقر صفحة الشركة ليس في الرياض ({comp_location or comp_subtitle})",
-                            notified=False
+                            match_summary=f"مقر صفحة الشركة ليس الرياض ({comp_location or comp_subtitle})",
+                            notified=False,
                         )
                         continue
 
-                    # إضافة بيانات التصنيف والمقر في بيانات الوظيفة لإظهارها بالرسالة
-                    job["company_industry"] = comp_industry or (", ".join(job_industries) if job_industries else "Software & Tech")
+                    is_tech = is_tech_industry(all_industry_text)
+                    job["company_industry"] = comp_industry or (", ".join(job_industries) if job_industries else "Tech")
                     job["company_location"] = comp_location or job.get("location", "Riyadh, Saudi Arabia")
+                    job["employment_type"] = job_details.get("employment_type", "")
+                    job["seniority_level"] = job_details.get("seniority_level", "")
+                    job["description"] = desc
+                    job["is_tech"] = is_tech
 
-                    # 5. التقييم بواسطة الذكاء الاصطناعي لكتابة ملخص احترافي
-                    print("   🤖 جاري كتابة ملخص التوافق بواسطة Gemini...")
+                    # 7. التقييم الواقعي عبر Gemini ومقارنة الـ CV
+                    print("   🤖 تقييم نسبة التوافق مع الـ CV عبر Gemini...")
                     evaluation = self.matcher.evaluate_job(
                         candidate_profile=profile,
                         job_title=job["title"],
                         company=job["company"],
                         location=job["location"],
-                        job_description=desc
+                        job_description=desc,
+                        company_industry=job["company_industry"],
                     )
 
-                    score = max(int(evaluation.get("match_score", 90)), 90)
-                    summary = evaluation.get("arabic_summary") or f"الوظيفة متطابقة تماماً مع طلبك: {job['title']} في {job['company']}."
-                    evaluation["match_score"] = score
-                    evaluation["arabic_summary"] = summary
+                    score = int(evaluation.get("match_score", 0))
+                    summary = evaluation.get("arabic_summary") or f"توافق الوظيفة مع خبرتك: {job['title']}."
                     matching_skills = ", ".join(evaluation.get("matching_skills", []))
                     missing_skills = ", ".join(evaluation.get("missing_skills", []))
 
-                    print(f"   📊 نتيجة التقييم: {score}% (متطابقة ومقبولة حصراً ✅)")
+                    if score < min_score:
+                        print(f"   📉 نسبة التوافق {score}% أقل من الحد المطلوب ({min_score}%) -> تم الحفظ بدون إرسال.")
+                        self.storage.save_job(
+                            job_id=job_id,
+                            title=job["title"],
+                            company=job["company"],
+                            location=job["location"],
+                            job_url=job["job_url"],
+                            match_score=score,
+                            is_match=False,
+                            match_summary=summary,
+                            matching_skills=matching_skills,
+                            missing_skills=missing_skills,
+                            notified=False,
+                        )
+                        continue
 
-                    # 6. الإرسال الفوري لتيليجرام
-                    total_matched += 1
-                    print("   📲 إرسال إشعار الوظيفة فوراً إلى تيليجرام...")
-                    msg = self.notifier.format_job_message(job, evaluation)
-                    sent = self.notifier.send_notification(msg)
-                    notified = True if sent else False
-                    if sent:
-                        total_notified += 1
+                    print(f"   📊 نتيجة التقييم الحقيقية: {score}% ({'🔥 Tech Priority' if is_tech else 'Accounting'}) ✅")
+                    matched_candidates.append({
+                        "job": job,
+                        "evaluation": evaluation,
+                        "score": score,
+                        "is_tech": is_tech,
+                        "summary": summary,
+                        "matching_skills": matching_skills,
+                        "missing_skills": missing_skills,
+                    })
 
-                    # حفظ النتيجة في قاعدة البيانات
-                    self.storage.save_job(
-                        job_id=job_id,
-                        title=job["title"],
-                        company=job["company"],
-                        location=job["location"],
-                        job_url=job["job_url"],
-                        match_score=score,
-                        is_match=True,
-                        match_summary=summary,
-                        matching_skills=matching_skills,
-                        missing_skills=missing_skills,
-                        notified=notified
-                    )
+        # ترتيب الأولوية: شركات الـ Tech أولاً، ثم أعلى نسبة توافق
+        matched_candidates.sort(key=lambda x: (x["is_tech"], x["score"]), reverse=True)
+
+        total_matched = len(matched_candidates)
+        total_notified = 0
+
+        for item in matched_candidates:
+            job = item["job"]
+            evaluation = item["evaluation"]
+            msg = self.notifier.format_job_message(job, evaluation)
+            sent = self.notifier.send_notification(msg, job_url=job["job_url"])
+            notified = bool(sent)
+            if sent:
+                total_notified += 1
+
+            self.storage.save_job(
+                job_id=job["job_id"],
+                title=job["title"],
+                company=job["company"],
+                location=job["location"],
+                job_url=job["job_url"],
+                match_score=item["score"],
+                is_match=True,
+                match_summary=item["summary"],
+                matching_skills=item["matching_skills"],
+                missing_skills=item["missing_skills"],
+                notified=notified,
+            )
 
         print("\n" + "=" * 60)
         print("🏁 انتهاء دورة الفحص:")
-        print(f"   • إجمالي الوظائف التي تم جلبها: {total_scraped}")
-        print(f"   • وظائف جديدة لم تُفحص من قبل: {total_new}")
-        print(f"   • وظائف متطابقة مع سيرتك الذاتية: {total_matched}")
-        print(f"   • إشعارات أُرسلت لواتساب: {total_notified}")
+        print(f"   • إجمالي الوظائف المجلبة: {total_scraped}")
+        print(f"   • وظائف جديدة فُحصت: {total_new}")
+        print(f"   • وظائف مطابقة للـ CV والشروط: {total_matched}")
+        print(f"   • إشعارات أُرسلت لتيليجرام: {total_notified}")
         print("=" * 60 + "\n")
 
-        # مزامنة قاعدة البيانات محلياً مع جيت هب عند العثور على أي وظائف جديدة لمنع التكرار
-        if total_notified > 0:
-            try:
-                import subprocess
-                subprocess.run(["git", "add", "jobs.db", "cv_profile.json"], cwd=str(self.base_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
-                subprocess.run(["git", "commit", "-m", "chore: sync local seen jobs [skip ci]"], cwd=str(self.base_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
-                subprocess.run(["git", "push", "origin", "main"], cwd=str(self.base_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
-            except Exception:
-                pass
+        if total_new > 0:
+            self._sync_git_push()
 
         return {
             "scraped": total_scraped,
             "new": total_new,
             "matched": total_matched,
-            "notified": total_notified
+            "notified": total_notified,
         }
 
+    def run_poll_window(self, poll_minutes: float = 3.0, interval_seconds: int = 90):
+        """
+        تشغيل دورات فحص متتابعة داخل نافذة زمنية قصيرة (مثلاً كل 90 ثانية لمدة 3 دقائق)
+        لاقتناص الوظائف بمجرد نزولها على LinkedIn داخل كل تشغيل لـ GitHub Actions.
+        """
+        start_ts = time.time()
+        end_ts = start_ts + max(0.0, poll_minutes * 60.0)
+        cycle_idx = 0
+
+        while True:
+            cycle_idx += 1
+            include_broad = cycle_idx == 1
+            self.run_cycle(include_broad_location=include_broad)
+
+            now = time.time()
+            remaining = end_ts - now
+            if remaining < interval_seconds:
+                break
+
+            print(f"⏳ انتظار {interval_seconds} ثانية قبل الدورة السريعة التالية...")
+            time.sleep(interval_seconds)
+
     def start_scheduler(self):
-        """تشغيل المجدول الزمني للعمل تلقائياً كل ساعة (أو حسب config.yaml)"""
+        """تشغيل محلي مستمر 24/7 كل دقيقة/دقائق حسب الإعدادات."""
         import schedule
 
-        interval = self.config.get("scheduler", {}).get("interval_minutes", 15)
-        sched_cfg = self.config.get("scheduler", {})
-        start_hour = sched_cfg.get("start_hour", 10)
-        end_hour = sched_cfg.get("end_hour", 24)
-        print(f"⏰ تم تفعيل المجدول الدوري: سيتم فحص LinkedIn تلقائياً كل {interval} دقيقة.")
-        print(f"🕒 ساعات العمل: يومياً من {start_hour}:00 صباحاً وحتى 12:00 منتصف الليل.")
-        print("💡 اضغط Ctrl+C في أي وقت لإيقاف البرنامج.\n")
+        interval = self.config.get("scheduler", {}).get("interval_minutes", 5)
+        print(f"⏰ تم تفعيل المجدول المستمر 24/7: فحص LinkedIn كل {interval} دقيقة.")
+        print("💡 اضغط Ctrl+C لإيقاف البرنامج.\n")
 
-        # تشغيل دورة فورية في البداية
         self.run_cycle()
-
         schedule.every(interval).minutes.do(self.run_cycle)
 
         while True:
             try:
                 schedule.run_pending()
-                time.sleep(30)
+                time.sleep(15)
             except KeyboardInterrupt:
-                print("\n🛑 تم إيقاف المجدول بناءً على طلبك.")
+                print("\n🛑 تم إيقاف المجدول.")
                 break
             except Exception as e:
-                print(f"⚠️ حدث خطأ في دورة المجدول: {e}")
-                time.sleep(60)
+                print(f"⚠️ خطأ في المجدول: {e}")
+                time.sleep(30)
 
-    def test_whatsapp(self):
-        """إرسال رسالة اختبارية سريعة للتأكد من وصول رسائل واتساب إلى هاتفك"""
+    def test_telegram(self):
+        """إرسال رسالة اختبارية إلى تيليجرام للتأكد من الإعدادات والتنسيق."""
         test_job = {
-            "title": "Senior Software Engineer (تجربة)",
-            "company": "Tech Innovations Inc.",
-            "location": "Riyadh, Saudi Arabia (Remote)",
-            "job_url": "https://www.linkedin.com/jobs"
+            "title": "Senior Account Management & Customer Success Manager (تجربة)",
+            "company": "Saudi Cloud Tech Co.",
+            "company_industry": "Software Development",
+            "company_location": "Riyadh, Saudi Arabia",
+            "location": "Riyadh, Saudi Arabia (Hybrid)",
+            "employment_type": "Full-time",
+            "seniority_level": "Mid-Senior level",
+            "posted_time": "Just now",
+            "is_tech": True,
+            "description": "Lead key B2B SaaS accounts, manage onboarding, retention, renewals, Zoho/HubSpot CRM, and KPI dashboards.",
+            "job_url": "https://www.linkedin.com/jobs",
         }
         test_eval = {
-            "match_score": 95,
-            "arabic_summary": "هذه رسالة اختبارية لتأكيد نجاح ربط الـ AI Agent مع حساب واتساب الخاص بك بنجاح!",
-            "matching_skills": ["Python", "JavaScript", "Problem Solving"]
+            "match_score": 94,
+            "arabic_summary": "رسالة اختبارية تؤكد جاهزية البوت على تيليجرام بالتنسيق الكامل وأولوية شركات الـ Tech.",
+            "job_highlights_ar": "• قيادة إدارة حسابات B2B SaaS ورفع نسبة الاحتفاظ بالعملاء.\n• إدارة الـ Onboarding والـ Renewals ومتابعة مؤشرات الأداء.",
+            "matching_skills": ["Account Management", "Customer Success", "B2B SaaS", "Zoho CRM", "HubSpot CRM"],
+            "missing_skills": [],
         }
         msg = self.notifier.format_job_message(test_job, test_eval)
-        print("📲 جاري إرسال رسالة الاختبار لواتساب...")
-        success = self.notifier.send_notification(msg)
-        if success:
-            print("✅ تم إرسال رسالة الاختبار بنجاح! راجع تطبيق واتساب على هاتفك الآن.")
+        print("📲 جاري إرسال رسالة الاختبار إلى تيليجرام...")
+        if self.notifier.send_notification(msg, job_url=test_job["job_url"]):
+            print("✅ تم إرسال رسالة الاختبار إلى تيليجرام بنجاح!")
         else:
-            print("❌ تعذر إرسال الرسالة، تأكد من إعدادات CALLMEBOT_PHONE و CALLMEBOT_API_KEY في ملف .env")
+            print("❌ تعذر الإرسال لتيليجرام، راجع TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID.")
 
     def show_status(self):
-        """عرض إحصائيات قاعدة البيانات والوظائف السابقة"""
         stats = self.storage.get_stats()
         print("\n📊 إحصائيات AI Job Agent:")
         print(f"   • إجمالي الوظائف المفحوصة: {stats['total_seen']}")
@@ -571,7 +636,7 @@ class JobAgent:
 
         recent = self.storage.get_recent_matches(5)
         if recent:
-            print("📌 آخر الوظائف المتطابقة التي تم العثور عليها:")
+            print("📌 آخر الوظائف المتطابقة:")
             for item in recent:
                 print(f"   - {item['title']} @ {item['company']} ({item['match_score']}%)")
                 print(f"     الرابط: {item['job_url']}")
@@ -580,27 +645,31 @@ class JobAgent:
 def main():
     parser = argparse.ArgumentParser(description="LinkedIn AI Job Agent")
     parser.add_argument("--run-once", action="store_true", help="تشغيل دورة فحص واحدة الآن والخروج")
-    parser.add_argument("--schedule", action="store_true", help="تشغيل الـ Agent باستمرار كل ساعة")
-    parser.add_argument("--test-whatsapp", action="store_true", help="إرسال رسالة تجريبية لواتساب للتأكد من الإعدادات")
-    parser.add_argument("--parse-cv", action="store_true", help="قراءة الـ CV واستخراج البروفايل")
-    parser.add_argument("--status", action="store_true", help="عرض إحصائيات الوظائف المخزنة")
+    parser.add_argument("--poll-minutes", type=float, default=0.0, help="تشغيل فحص متكرر لمدة محددة بالدقائق")
+    parser.add_argument("--interval-seconds", type=int, default=90, help="الفاصل بالثواني داخل وضع --poll-minutes")
+    parser.add_argument("--schedule", action="store_true", help="تشغيل مستمر 24/7 محلياً")
+    parser.add_argument("--test-telegram", action="store_true", help="إرسال رسالة اختبارية لتيليجرام")
+    parser.add_argument("--test-whatsapp", action="store_true", help="Alias لاختبار الإشعار")
+    parser.add_argument("--parse-cv", action="store_true", help="قراءة الـ CV وتحديث البروفايل")
+    parser.add_argument("--status", action="store_true", help="عرض إحصائيات قاعدة البيانات")
 
     args = parser.parse_args()
     agent = JobAgent()
 
-    if args.test_whatsapp:
-        agent.test_whatsapp()
+    if args.test_telegram or args.test_whatsapp:
+        agent.test_telegram()
     elif args.parse_cv:
-        profile = agent.get_candidate_profile()
         import json
+        profile = agent.get_candidate_profile()
         print("\n📋 البروفايل المستخرج من سيرتك الذاتية:")
         print(json.dumps(profile, ensure_ascii=False, indent=2))
     elif args.status:
         agent.show_status()
+    elif args.poll_minutes > 0:
+        agent.run_poll_window(poll_minutes=args.poll_minutes, interval_seconds=args.interval_seconds)
     elif args.schedule:
         agent.start_scheduler()
     else:
-        # الوضع الافتراضي: تشغيل دورة فورية
         agent.run_cycle()
 
 

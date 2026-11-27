@@ -1,141 +1,64 @@
-# 🤖 LinkedIn AI Job Hunter Agent (وكيل الذكاء الاصطناعي للتوظيف)
+# 🤖 LinkedIn AI Job Hunter Agent (وكيل التوظيف الذكي على تيليجرام)
 
-وكيل ذكاء اصطناعي ذكي ومستقل يقوم بقراءة سيرتك الذاتية (CV)، والبحث الدوري كل ساعة على منصة **LinkedIn** عن أحدث الوظائف المنشورة التي تتوافق مع مهاراتك وخبراتك، وتحليل مدى ملاءمتها لك بواسطة **Gemini AI**، ثم إرسال رسالة فورية ومباشرة إلى هاتفك عبر **تطبيق واتساب (WhatsApp)** برابط التقديم المباشر على لينكدإن ونسبة التطابق وأسباب الترشيح.
-
----
-
-## 🌟 مميزات الـ Agent
-
-1. **فهم عميق لسيرتك الذاتية (CV Understanding):**
-   - يقرأ ملف الـ CV الخاص بك (PDF أو نص) ويحلل مهاراتك، خبراتك، مستواك الوظيفي، وأولوياتك.
-   - يعتمد نظام كاش ذكي حتى لا يستهلك توكنز الذكاء الاصطناعي إلا عند تعديل الـ CV.
-
-2. **بحث آمن ومباشر في LinkedIn:**
-   - يجلب أحدث الوظائف المنشورة خلال آخر 24 ساعة مباشرة.
-   - لا يحتاج لحسابك الشخصي أو كلمة السر (صفر مخاطر لحظرك من لينكدإن).
-
-3. **تقييم ومطابقة ذكية عبر Gemini AI:**
-   - يقرأ الوصف الوظيفي الكامل لكل وظيفة جديدة.
-   - يقارن المتطلبات بنقاط قوتك في الـ CV ويعطي نسبة تطابق من 0 إلى 100%.
-   - يكتب ملخصاً توضيحياً باللغة العربية يشرح سبب ترشيح الوظيفة لك وأبرز المهارات المشتركة.
-
-4. **إرسال فوري إلى واتساب (WhatsApp Alerts):**
-   - إشعارات فورية على هاتفك تحتوي على: مسمى الوظيفة، اسم الشركة، الموقع، نسبة التطابق، ورابط التقديم المباشر على لينكدإن.
-
-5. **منع التكرار نهائياً (Smart Deduplication):**
-   - قاعدة بيانات SQLite محلية تحفظ جميع الوظائف التي تم فحصها لضمان عدم إرسال نفس الوظيفة مرتين.
-
-6. **مجدول زمني آلي (Hourly Scheduler):**
-   - يعمل كل ساعة تلقائياً في الخلفية.
+وكيل ذكاء اصطناعي يعمل **24 ساعة يومياً** عبر **GitHub Actions (مجاناً 100%)** للبحث عن أحدث الوظائف على **LinkedIn** فور نزولها (`sortBy=DD`)، وفلترتها بدقة حسب المسميات الـ 14 والقطاعات الـ 4 ومقر الشركة في **الرياض**، مع إعطاء **الأولوية القصوى لشركات الـ Tech**، وحساب **نسبة التوافق الحقيقية مع الـ CV** عبر Gemini، وإرسال تفاصيل الوظيفة كاملة مباشرة إلى **تيليجرام**.
 
 ---
 
-## 📁 هيكل المشروع
+## 🎯 معايير الفلترة والمطابقة
 
-```text
-linkedin_job_agent/
-├── agent.py               # المحرك الرئيسي المنسق لكل العمليات
-├── resume_parser.py       # استخراج نصوص وبروفايل الـ CV
-├── linkedin_scraper.py    # جلب أحدث وظائف لينكدإن
-├── job_matcher.py         # تقييم التوافق والذكاء الاصطناعي (Gemini)
-├── notifier.py            # إرسال الرسائل إلى واتساب
-├── storage.py             # قاعدة بيانات SQLite لتتبع الوظائف
-├── config.yaml            # إعدادات البحث والكلمات المفتاحية والمدن
-├── .env                   # مفاتيح الربط (Gemini & WhatsApp)
-├── requirements.txt       # حزم بايثون المطلوبة
-├── run.sh                 # سكربت تشغيل سريع
-└── cv_sample.txt          # ملف سيرة ذاتية تجريبي
-```
-
----
-
-## 🚀 خطوات الإعداد والتشغيل السريع
-
-### 1. وضع سيرتك الذاتية (CV)
-انسخ ملف الـ CV الخاص بك وضعه داخل هذا المجلد باسم `cv.pdf` (أو عدل مسار الملف في `config.yaml`).
-
-### 2. إعداد مفاتيح الاتصال في ملف `.env`
-افتح ملف `.env` واملأ القيمتين التاليتين:
-
-1. **مفتاح Gemini API:**
-   - احصل عليه مجاناً فوراً من [Google AI Studio](https://aistudio.google.com/app/apikey).
-   - ضعه في: `GEMINI_API_KEY=...`
-
-2. **تفعيل واتساب مجاناً عبر CallMeBot (يستغرق 30 ثانية):**
-   - أضف هذا الرقم إلى جهات اتصالك على هاتفك: `+34 644 44 24 53`
-   - افتح تطبيق واتساب وأرسل له هذه الرسالة نصياً بالإنجليزية:
-     ```text
-     I allow callmebot to send me messages
-     ```
-   - سيرد عليك البوت في ثوانٍ برمز الـ API Key الخاص بك.
-   - ضع رقم هاتفك (مع كود الدولة مثل `+9665xxxxxxxx`) والـ API Key في ملف `.env`:
-     ```env
-     CALLMEBOT_PHONE=+966500000000
-     CALLMEBOT_API_KEY=123456
-     ```
+1. **المسميات المستهدفة (والقريبة منها):**
+   - Senior Account Management & Customer Success Manager
+   - Senior Sales Account Manager / Senior Account Manager / Senior Account Management
+   - Sales Team Lead / Sales Team Leader / Sales Supervisor
+   - Account Manager Team Leader / Account Manager Team Lead / Account Management Team Lead
+   - Business Development Team Lead
+   - Head of Customer Experience
+   - Sales Retention Team Lead
+   - Senior Customer Success Specialist
+2. **القطاعات الـ 4 المسموحة حصراً (مع أولوية قصوى للـ Tech):**
+   - 🔥 **Tech Priority:** `Software Development`, `Information Technology & Services`, `Technology, Information and Internet`
+   - 📊 `Accounting`
+3. **مقر صفحة الشركة على LinkedIn:** `Riyadh` حصراً.
+4. **محتوى رسالة تيليجرام:** اسم الوظيفة، الشركة، القطاع، مقر الشركة، موقع الوظيفة، نوع الدوام والمستوى، نسبة التوافق الحقيقية مع الـ CV، المهارات المتطابقة، تحليل الذكاء الاصطناعي، الوصف الوظيفي الكامل، وزر التقديم المباشر.
 
 ---
 
-### 3. تخصيص كلمات البحث في `config.yaml`
-افتح `config.yaml` وعدل الكلمات والمواقع حسب رغبتك:
-```yaml
-search:
-  keywords:
-    - "Full Stack Developer"
-    - "Software Engineer"
-    - "Frontend Developer"
-  locations:
-    - "Saudi Arabia"
-    - "Riyadh"
-    - "Remote"
-matching:
-  min_match_score: 75 # لن يرسل لك إلا الوظائف المتوافقة بنسبة 75% فما فوق
-```
+## ⚡ التشغيل على GitHub كل دقائق بدون تأخير 24/7 (مجاني)
+
+> **ملاحظة مهمة حول GitHub Actions `schedule`:**
+> جداول `cron` المدمجة في GitHub Actions قد تتأخر من 15 دقيقة إلى عدة ساعات أحياناً وقت الضغط.
+> لذلك يدعم الـ Workflow التشغيل عبر `repository_dispatch` + فحص سريع متتابع كل **90 ثانية** (`--poll-minutes 3 --interval-seconds 90`).
+
+### لتشغيله بشكل منتظم كل 5 دقائق 24/7 مجاناً (بدون أي تأخير من GitHub):
+استخدم ملف [`cloudflare_worker.js`](cloudflare_worker.js) على حساب Cloudflare المجاني (100,000 تشغيل/يوم مجاناً):
+1. أنشئ Worker جديد على [Cloudflare Dashboard](https://dash.cloudflare.com) والصق كود `cloudflare_worker.js`.
+2. أضف متغير سري (Secret) باسم `GITHUB_TOKEN` (GitHub Personal Access Token بصلاحية `repo`).
+3. من **Settings → Triggers → Cron Triggers** أضف الجدول: `*/5 * * * *`.
+4. تأكد من وجود الأسرار الآتية في إعدادات مستودع GitHub (`Settings → Secrets and variables → Actions`):
+   - `GEMINI_API_KEY`
+   - `TELEGRAM_BOT_TOKEN`
+   - `TELEGRAM_CHAT_ID`
 
 ---
 
-## 💻 أوامر التشغيل
+## 💻 أوامر التشغيل المحلي
 
-### 🧪 1. تجربة وصول رسالة إلى واتساب الآن:
 ```bash
-./run.sh --test-whatsapp
-```
-*(ستصلك رسالة تجريبية منسقة على واتساب تؤكد نجاح الاتصال)*
+# 1. اختبار رسالة تيليجرام الآن
+./run.sh --test-telegram
 
-### 🔍 2. تجربة قراءة وتحليل الـ CV الخاص بك:
-```bash
+# 2. تحديث قراءة السيرة الذاتية
 ./run.sh --parse-cv
-```
 
-### ⚡ 3. تشغيل دورة فحص وبحث فورية واحدة:
-```bash
+# 3. تشغيل دورة فحص واحدة الآن
 ./run.sh --run-once
-```
 
-### ⏰ 4. تشغيل الـ Agent باستمرار كل ساعة (المجدول الآلي):
-```bash
+# 4. تشغيل فحص سريع متكرر كل 90 ثانية لمدة 3 دقائق
+./run.sh --poll-minutes 3 --interval-seconds 90
+
+# 5. تشغيل مستمر 24/7 على جهازك
 ./run.sh --schedule
-```
 
-### 📊 5. معرفة الإحصائيات وعدد الوظائف المفحوصة:
-```bash
+# 6. عرض الإحصائيات
 ./run.sh --status
-```
-
----
-
-## 🔄 التشغيل في الخلفية على ماك (Background Daemon)
-
-إذا أردت أن يستمر الـ Agent بالعمل كل ساعة في خلفية الماك حتى لو أغلقت نافذة الأوامر (Terminal):
-
-```bash
-nohup ./run.sh --schedule > agent.log 2>&1 &
-```
-لمتابعة ما يحدث في أي وقت:
-```bash
-tail -f agent.log
-```
-ولإيقافه في أي وقت:
-```bash
-pkill -f "agent.py --schedule"
 ```
