@@ -5,6 +5,15 @@ on:
     # أعلى تردد يدعمه GitHub Actions تلقائياً (كل 5 دقائق) كخطة احتياطية
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      test_telegram:
+        description: 'إرسال رسالة اختبارية إلى تيليجرام بدلاً من الفحص'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
   repository_dispatch:
     types: [run-hunter]
 
@@ -41,7 +50,11 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python agent.py --poll-minutes 3 --interval-seconds 90
+          if [ "${{ github.event.inputs.test_telegram }}" = "true" ]; then
+            python agent.py --test-telegram
+          else
+            python agent.py --poll-minutes 3 --interval-seconds 90
+          fi
 
       - name: Save and commit updated database
         run: |
